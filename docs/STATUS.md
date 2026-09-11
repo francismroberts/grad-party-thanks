@@ -1,9 +1,10 @@
-# Status — updated 2026-09-11 03:18 PT
+# Status — updated 2026-09-11 03:21 PT
 
 ## Built this session
 - Repo scaffold: `.gitignore`, `.env.example`, `CNAME`, `README.md`, `scripts/package.json`.
 - `scripts/ingest.js` (spec stage 2): GPS strip on a temp copy with verification, oriented dimensions, thumb/thumb@2x/full WebP, uploads, `photos` row, gallery-wide `sort_order` recompute. `--limit N`, idempotent, resumes interrupted runs, summary with failure reasons.
 - **Photobooth gallery fully ingested: 70 rows, 280 objects, 0 failures.** Verified: no NULLs, `sort_order` 0–69 contiguous and ascending by capture time, all 1200×1800.
+- **Photographer tested on 5 of 294 files, 0 failures.** Verified on a downloaded original: no `GPS*` tags, Make/Model/Lens/Exposure/DateTimeOriginal kept. `full` derivative has no metadata at all. Portrait file came through as 3840×5760 → 1333×2000. `taken_at` from EXIF. Mixed dimensions (5760×3840, 3840×5760, 5221×3481), so the grid must use per-row width/height.
 - Supabase tables, buckets and RLS were already in place before this session (stage 1 done).
 
 ## Decisions that differ from the spec
@@ -17,10 +18,11 @@
 
 ## Broken or unfinished
 - **Node 26 gotcha.** Homebrew installed Node 26.8.2, where an unclosed FileHandle is a hard `ERR_INVALID_STATE` at GC. Fixed by reading each working file into one Buffer and passing that to sharp and exifr. `engines` is pinned `>=20 <27`.
-- Untested on photographer files: they are the ones expected to carry GPS and camera EXIF. Photobooth files have neither, so "strip GPS, keep camera tags" is proven only on the GPS side.
+- None of the 294 photographer source files carries GPS (scanned with exiftool). The strip is a no-op on this set; the read-back check still guards every file.
+- Photographer set is 294 files / 1.0 GB, not the spec's ~300 / 1.1 GB. Archive sizes in the UI should come from real numbers, not the spec.
 - Archive generation (`archives/<gallery>-*.zip`) is not in the script yet. Spec puts it at stage 6.
 - No HTML pages exist yet.
 
 ## Next session should start with
-1. Test photographer on 5: `cd scripts && node ingest.js --gallery photographer /Users/francis/Documents/Graduation/photographer --limit 5`. Then download one original from the bucket and run exiftool on it: no `GPS*` tags, but Make/Model/ExposureTime present. Then run the rest.
+1. Run the rest of photographer (289 files, ~1 GB upload): `cd scripts && node ingest.js --gallery photographer /Users/francis/Documents/Graduation/photographer`.
 2. Stage 3: `booth.html` with single-photo download. Photobooth data is complete, so this can start any time.
