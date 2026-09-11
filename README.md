@@ -61,7 +61,13 @@ node scripts/serve.mjs
 ```
 
 Then open `http://127.0.0.1:8765/booth` or `/photos`. Like GitHub
-Pages, it resolves `/booth` to `booth.html`. The gallery pages read live data from
+Pages, it resolves `/booth` to `booth.html`.
+
+It listens on all interfaces and prints a LAN URL to open on a phone on
+the same Wi-Fi. Plain `http://` over LAN is not a secure context, so on
+the phone the zip download can't use the on-disk streaming path and
+falls back to the buffered one; test streaming zips on the deployed
+HTTPS site. Set `HOST=127.0.0.1` to keep it to this Mac. The gallery pages read live data from
 Supabase, so what you see locally is what's deployed.
 
 Static assets the pages reference but the repo does not hold yet:
