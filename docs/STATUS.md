@@ -1,4 +1,4 @@
-# Status — updated 2026-09-11 06:35 PT
+# Status — updated 2026-09-11 07:33 PT
 
 ## Built this session
 - Repo scaffold, `CLAUDE.md`, `scripts/ingest.js` (stage 2), `scripts/serve.mjs` (local preview, listens on the LAN and prints the phone URL; system Python can't read ~/Documents).
@@ -16,11 +16,13 @@
 - Pages use plain `fetch` to PostgREST, no supabase-js anywhere. Download filenames carry the gallery slug (`francis-grad-party-booth-001.jpg`).
 - Lightbox and Download all both serve originals (JPG), not WebP. Tier 2 streams to disk instead of in-memory JSZip; StreamSaver rejected (buffers on Safari). Photographer set is 294 / 1.0 GB, not ~300 / 1.1 GB.
 
+- **Stage 9 (assets + meta):** favicon.ico / favicon-32.png / favicon-16.png / apple-touch-icon.png copied from the RSVP site; `og-image.jpg` generated from the landing cover (photographer sort_order 4) at 1200×630, 134 KB JPEG. Every page audited: `noindex`, `theme-color`, absolute `og:url` / `og:image` / `twitter:image` on `https://thanks.francismroberts.com/`. Pushed to origin.
+
 ## Broken or unfinished
-- Referenced but not in repo: `favicon.ico`, `favicon-32.png`, `favicon-16.png`, `apple-touch-icon.png` (copy from RSVP site) and `og-image.jpg` (JPEG < 200 KB). Stage 9.
+- DNS for `thanks.francismroberts.com` and the GitHub Pages custom-domain setting not yet confirmed live; `CNAME` is in the repo.
 - Local-only test hooks in `gallery.js` (`?zipvia=`, `?selftest-zip=`) are hostname-gated. Archives are CDN-cached; a rebuild may serve old bytes briefly. iOS untested on a device.
 
 ## Next session should start with
-1. Stage 9: favicons + `og-image.jpg`, push to GitHub Pages, DNS for `thanks.francismroberts.com`, check an OG preview with a real share.
+1. Confirm GitHub Pages is serving the repo at `thanks.francismroberts.com` (DNS CNAME → GitHub, HTTPS enforced), then check an OG preview with a real share (iMessage, WhatsApp).
 2. On a real iPhone over HTTPS: select-mode zip (OPFS path, 5 photos → Files) and a real camera-roll upload (HEIC/MOV).
 3. Landing copy and cover choices are first drafts.
