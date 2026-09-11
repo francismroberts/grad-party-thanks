@@ -1,8 +1,9 @@
-# Status — updated 2026-09-11 03:08 PT
+# Status — updated 2026-09-11 03:18 PT
 
 ## Built this session
 - Repo scaffold: `.gitignore`, `.env.example`, `CNAME`, `README.md`, `scripts/package.json`.
-- `scripts/ingest.js` (spec stage 2), run and verified on 11 photobooth files: GPS strip on a temp copy with verification, oriented dimensions, thumb/thumb@2x/full WebP, uploads, `photos` row, gallery-wide `sort_order` recompute. `--limit N`, idempotent, resumes interrupted runs, summary with failure reasons.
+- `scripts/ingest.js` (spec stage 2): GPS strip on a temp copy with verification, oriented dimensions, thumb/thumb@2x/full WebP, uploads, `photos` row, gallery-wide `sort_order` recompute. `--limit N`, idempotent, resumes interrupted runs, summary with failure reasons.
+- **Photobooth gallery fully ingested: 70 rows, 280 objects, 0 failures.** Verified: no NULLs, `sort_order` 0–69 contiguous and ascending by capture time, all 1200×1800.
 - Supabase tables, buckets and RLS were already in place before this session (stage 1 done).
 
 ## Decisions that differ from the spec
@@ -21,6 +22,5 @@
 - No HTML pages exist yet.
 
 ## Next session should start with
-1. Finish photobooth: `cd scripts && node ingest.js --gallery photobooth /Users/francis/Documents/Graduation/photobooth` (59 files left).
-2. Test photographer on 5: same command with `--gallery photographer` and `--limit 5`. Then download one original from the bucket and run exiftool on it: no `GPS*` tags, but Make/Model/ExposureTime present.
-3. Stage 3: `booth.html` with single-photo download.
+1. Test photographer on 5: `cd scripts && node ingest.js --gallery photographer /Users/francis/Documents/Graduation/photographer --limit 5`. Then download one original from the bucket and run exiftool on it: no `GPS*` tags, but Make/Model/ExposureTime present. Then run the rest.
+2. Stage 3: `booth.html` with single-photo download. Photobooth data is complete, so this can start any time.
