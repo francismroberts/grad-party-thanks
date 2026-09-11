@@ -30,18 +30,37 @@ embedded as base64.
 ├── photos.html               Photographer gallery, ~300 photos                    (stage 4)
 ├── upload.html               Guest upload form, resumable (TUS) uploads           (stage 7)
 ├── assets/
-│   └── supabase-config.js    Project URL, publishable key, bucket names. Safe to commit.
+│   ├── supabase-config.js    Project URL, publishable key, bucket names. Safe to commit.
+│   ├── site.css              Shared tokens and components, copied from the RSVP site
+│   └── gallery.js            Gallery loader + lightbox, shared by booth.html and photos.html
 ├── docs/
-│   └── thank-you-site-spec.md
-├── scripts/                  Local-only ingest pipeline. Not deployed.
+│   ├── thank-you-site-spec.md
+│   └── STATUS.md             Session handoff. Read this first.
+├── scripts/                  Local-only tooling. Not deployed.
 │   ├── package.json
-│   └── ingest.js             Resize, strip GPS, upload, build archives           (stage 2)
+│   ├── ingest.js             Resize, strip GPS, upload, insert rows               (stage 2)
+│   └── serve.mjs             Static preview server for local testing
 ├── .env.example              Variables the pipeline needs, no values
 └── .env                      Real values. Gitignored. Never commit.
 ```
 
-Page files and `scripts/ingest.js` do not exist yet; they land in the
-stages noted above.
+Pages not listed above do not exist yet; they land in the stages noted.
+
+## Previewing locally
+
+Pages use ES modules, so they need an HTTP server, not `file://`:
+
+```bash
+node scripts/serve.mjs
+```
+
+Then open `http://127.0.0.1:8765/booth`. Like GitHub Pages, it resolves
+`/booth` to `booth.html`. The gallery pages read live data from
+Supabase, so what you see locally is what's deployed.
+
+Static assets the pages reference but the repo does not hold yet:
+`favicon.ico`, `favicon-32.png`, `favicon-16.png`, `apple-touch-icon.png`
+(copy from the RSVP site) and `og-image.jpg` (a JPEG under 200 KB).
 
 ## Secrets
 
@@ -116,11 +135,14 @@ Archive generation is a later stage and is not part of the script yet.
 
 ## Browser-side libraries
 
-The pages load these from a CDN, so they are not in `package.json`:
+The gallery pages talk to Supabase with plain `fetch`: they read one
+table and build public URLs, which does not justify the supabase-js
+bundle on a phone. Pages that need more load it from a CDN, so nothing
+here is in `package.json`:
 
-- `@supabase/supabase-js` for reading `photos` and building download URLs
 - `tus-js-client` for resumable uploads on `upload.html`
 - `JSZip` for the select-multiple download (capped at 40 photos)
+- `@supabase/supabase-js` on `upload.html` for the `uploads` row insert
 
 ## Deploy
 
