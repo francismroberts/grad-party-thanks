@@ -1,0 +1,14 @@
+# Secrets — never commit
+.env
+.env.*
+!.env.example
+
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store
+
+# Local pipeline output (derivatives and archives are built then uploaded, not kept)
+scripts/.cache/
+scripts/out/
