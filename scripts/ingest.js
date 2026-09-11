@@ -82,7 +82,8 @@ function usage(exitCode = 0) {
   --gallery   Which gallery the photos belong to (photos.gallery)
   --limit N   Stop after N files that need work. Already-ingested files
               are skipped without counting toward the limit, so
-              re-running with --limit 5 does the next five.
+              re-running with --limit 5 does the next five. --limit 0
+              ingests nothing and only checks/repairs existing rows.
   --help      Show this message
 `)
   process.exit(exitCode)
@@ -117,8 +118,8 @@ if (!sourceDir) {
   console.error('Missing source folder.')
   usage(1)
 }
-if (args.values.limit !== undefined && (!Number.isInteger(limit) || limit < 1)) {
-  console.error('--limit must be a positive integer.')
+if (args.values.limit !== undefined && (!Number.isInteger(limit) || limit < 0)) {
+  console.error('--limit must be a non-negative integer.')
   usage(1)
 }
 
@@ -197,18 +198,18 @@ async function listObjects(prefix) {
   return names
 }
 
-// Map of id → taken_at (ISO string or null) for rows already in the gallery.
+// Map of id → { taken_at, original_path } for rows already in the gallery.
 async function existingRows() {
   const rows = new Map()
   const pageSize = 1000
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from('photos')
-      .select('id, taken_at')
+      .select('id, taken_at, original_path')
       .eq('gallery', gallery)
       .range(from, from + pageSize - 1)
     if (error) throw new Error(`reading photos rows: ${error.message}`)
-    for (const r of data) rows.set(r.id, r.taken_at)
+    for (const r of data) rows.set(r.id, { taken_at: r.taken_at, original_path: r.original_path })
     if (data.length < pageSize) break
   }
   return rows
@@ -326,7 +327,7 @@ async function main() {
   console.log()
 
   const workDir = await mkdtemp(join(tmpdir(), 'grad-ingest-'))
-  const summary = { processed: 0, skipped: 0, skippedDone: 0, skippedLimit: 0, failed: 0, mtimeFallback: 0, datesFixed: 0 }
+  const summary = { processed: 0, skipped: 0, skippedDone: 0, skippedLimit: 0, failed: 0, mtimeFallback: 0, datesFixed: 0, pathsFixed: 0 }
   const failures = []
   let attempted = 0
   let datesChanged = false
@@ -337,27 +338,45 @@ async function main() {
       const name = basename(file)
       const tag = `[${String(i + 1).padStart(String(hashed.length).length)}/${hashed.length}] ${name} → ${short(id)}`
 
+      const ext = normalizeExt(extname(file))
+      const thumbPath = `${gallery}/thumb/${id}.webp`
+      const thumb2xPath = `${gallery}/thumb/${id}@2x.webp`
+      const fullPath = `${gallery}/full/${id}.webp`
+      const originalPath = `${gallery}/original/${id}${ext}`
+
       if (rows.has(id)) {
-        // Already ingested. Cheap self-heal: if the capture time we'd
-        // compute now differs from what's stored (an earlier run used a
-        // worse source), update it so sort_order converges on re-run.
-        let note = ''
+        // Already ingested. Cheap self-heal so re-runs converge:
+        //  - taken_at: recompute and update if an earlier run stored a
+        //    worse value, so sort_order comes right.
+        //  - original_path: fill in if NULL (rows written before the
+        //    column was set). The original is uploaded before the row is
+        //    inserted, so the object is known to exist at this path.
+        const notes = []
+        const patch = {}
+        const stored = rows.get(id)
         try {
           const { takenAt, source } = await readCaptureTime(await readFile(file), file)
-          const stored = rows.get(id)
-          if (!stored || Date.parse(stored) !== takenAt.getTime()) {
-            const { error } = await supabase
-              .from('photos')
-              .update({ taken_at: takenAt.toISOString() })
-              .eq('id', id)
+          if (!stored.taken_at || Date.parse(stored.taken_at) !== takenAt.getTime()) {
+            patch.taken_at = takenAt.toISOString()
+            notes.push(`taken_at updated from ${source}`)
+          }
+          if (!stored.original_path) {
+            patch.original_path = originalPath
+            notes.push('original_path filled')
+          }
+          if (Object.keys(patch).length) {
+            const { error } = await supabase.from('photos').update(patch).eq('id', id)
             if (error) throw new Error(error.message)
-            summary.datesFixed++
-            datesChanged = true
-            note = `, taken_at updated from ${source}`
+            if (patch.taken_at) {
+              summary.datesFixed++
+              datesChanged = true
+            }
+            if (patch.original_path) summary.pathsFixed++
           }
         } catch (err) {
-          note = `, taken_at check failed: ${err.message}`
+          notes.push(`repair failed: ${err.message}`)
         }
+        const note = notes.length ? `, ${notes.join(', ')}` : ''
         console.log(`${tag}  skipped (already ingested${note})`)
         summary.skipped++
         summary.skippedDone++
@@ -371,11 +390,6 @@ async function main() {
       }
       attempted++
 
-      const ext = normalizeExt(extname(file))
-      const thumbPath = `${gallery}/thumb/${id}.webp`
-      const thumb2xPath = `${gallery}/thumb/${id}@2x.webp`
-      const fullPath = `${gallery}/full/${id}.webp`
-      const originalPath = `${gallery}/original/${id}${ext}`
       const work = join(workDir, `${id}${ext}`)
 
       try {
@@ -415,6 +429,7 @@ async function main() {
           gallery,
           thumb_path: thumbPath,
           full_path: fullPath,
+          original_path: originalPath,
           width,
           height,
           taken_at: takenAt.toISOString(),
@@ -455,6 +470,9 @@ async function main() {
   }
   if (summary.datesFixed) {
     console.log(`  note      : ${summary.datesFixed} existing row(s) had taken_at corrected`)
+  }
+  if (summary.pathsFixed) {
+    console.log(`  note      : ${summary.pathsFixed} existing row(s) had original_path filled`)
   }
   if (failures.length) {
     console.log()
