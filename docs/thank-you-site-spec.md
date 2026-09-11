@@ -295,8 +295,9 @@ That single line prevents most of the confusion.
 ```
 
 Two **separate** galleries, not tabs. Landing page: short thank-you
-note in the RSVP site's voice, then two gallery cards (cover photo +
-name + count) in the double-rule frame, then the upload CTA.
+note in the RSVP site's voice, the one-line speech ask anchored to the
+form, then two gallery cards (cover photo + caption band + name + live
+count) in the double-rule frame, then the upload form itself.
 
 ### Chapters (photos only)
 
@@ -497,10 +498,19 @@ about **2.4 GB**, trivial against a 100 GB quota.
 
 ---
 
-## Upload page
+## Upload form
+
+One shared module (`assets/upload.js`, mounts into `#uploader`) used in
+two places: **inline on the landing page**, after the thank-you note
+and the gallery cards (people came to see photos; asking before giving
+reads as transactional), and **standalone at `/upload`** for texting
+the link to people who have video. The landing page also carries one
+line near the top, anchored to the form: *"If you got video of the
+speech, scroll down — I need it."*
 
 Fields: name (optional), note (optional), files
-(`accept="image/*,video/*"`, multiple).
+(`accept="image/*,video/*"`, multiple). The file input is a styled
+picker, not a default browser control.
 
 Behavior:
 
@@ -518,11 +528,20 @@ Behavior:
   `.supabase.co`) — the docs call this out specifically for large-file
   performance. Chunk size must be exactly 6 MB.
 
-- Resumable gives real progress events, so the progress bar is accurate
+- Resumable gives real progress events: per-file bar with a real
+  percentage, plus a running total ("Uploading 2 of 5 · 340 MB of 1.2 GB")
 - Bucket ceiling is 2 GB per file; guard client-side at the same
-- Reject non-image/video before upload starts
-- Insert an `uploads` row per file on success
-- Confirmation in the voice of the RSVP site's "You're in."
+- Reject non-image/video before upload starts, with a clear per-file message
+- One file at a time; a failed file gets its own Retry that resumes
+  that file only. The object name is remembered per file (localStorage)
+  so a resumed upload keeps writing the object it started
+- Insert an `uploads` row per file on success: uploader_name, note,
+  file_path, mime_type, size_bytes
+- `beforeunload` warning while anything is in flight
+- Confirmation in the voice of the RSVP site's "You're in." ("They're
+  in." / "Got it. Thank you.")
+- Verified 2026-09-11: 120 MB upload with an 8 s simulated outage at 30%
+  resumed from 30% after one HEAD, single creation request, no restart
 
 **Check the project-level ceiling too.** Storage → Settings has a global
 upload size limit that caps every bucket regardless of the bucket's own

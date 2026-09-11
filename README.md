@@ -25,15 +25,17 @@ embedded as base64.
 ```
 .
 ├── CNAME                     GitHub Pages custom domain
-├── index.html                Landing: thank-you note, gallery cards, upload CTA   (stage 8)
-├── booth.html                Photo booth gallery, ~70 photos                      (stage 3)
-├── photos.html               Photographer gallery, ~300 photos                    (stage 4)
-├── upload.html               Guest upload form, resumable (TUS) uploads           (stage 7)
+├── index.html                Landing: thank-you note, gallery cards, upload form inline
+├── booth.html                Photo booth gallery, 70 strips
+├── photos.html               Photographer gallery, 294 photos, chapters
+├── upload.html               Standalone upload form (same module), for texting the link
 ├── assets/
 │   ├── supabase-config.js    Project URL, publishable key, bucket names. Safe to commit.
 │   ├── site.css              Shared tokens and components, copied from the RSVP site
 │   ├── zip-writer.worker.js  Streams a zip into the origin-private file system (disk, not RAM)
+│   ├── upload.js             Guest upload form (resumable TUS), mounted on index.html and upload.html
 │   ├── vendor/client-zip.js  client-zip 2.5.0 (MIT), vendored so nothing loads from a CDN
+│   ├── vendor/tus.min.js     tus-js-client 4.3.1 (MIT), vendored; window.tus
 │   └── gallery.js            Gallery loader + lightbox, shared by booth.html and photos.html.
 │                             Two layouts: CSS grid (booth, uniform strips) and justified
 │                             rows (photos, mixed aspect ratios; class="grid justified").
@@ -185,11 +187,9 @@ table and build public URLs, which does not justify the supabase-js
 bundle on a phone. The select-multiple download uses `client-zip`,
 vendored in `assets/vendor/`, streaming the zip to disk (see the spec's
 Tier 2 for the three save paths and why StreamSaver was rejected).
-Pages that need more will load it from a CDN, so nothing here is in
-`package.json`:
-
-- `tus-js-client` for resumable uploads on `upload.html`
-- `@supabase/supabase-js` on `upload.html` for the `uploads` row insert
+Uploads use `tus-js-client`, also vendored, against the direct storage
+hostname with 6 MB chunks; the `uploads` row is a plain PostgREST insert.
+No page loads supabase-js, and nothing browser-side is in `package.json`.
 
 Two local-only query flags help test the download without a save dialog
 (they do nothing off localhost): `?zipvia=opfs|blob|picker` forces a

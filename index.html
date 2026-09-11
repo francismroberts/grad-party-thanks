@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Thank You — Francis Grad Party</title>
+  <meta name="description" content="Thank you for coming. The photos are here, and if you got video of the speech, I need it.">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#F6EFF2">
+
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Francis Grad Party">
+  <meta property="og:title" content="Thank You — Francis Grad Party">
+  <meta property="og:description" content="Thank you for coming. The photos are here, and if you got video of the speech, I need it.">
+  <meta property="og:url" content="https://thanks.francismroberts.com/">
+  <meta property="og:image" content="https://thanks.francismroberts.com/og-image.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Thank You — Francis Grad Party">
+  <meta name="twitter:description" content="Thank you for coming. The photos are here, and if you got video of the speech, I need it.">
+  <meta name="twitter:image" content="https://thanks.francismroberts.com/og-image.jpg">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body>
+<main>
+
+  <section class="col">
+    <p class="label">Thank you</p>
+    <h1>You came. That was the whole point.</h1>
+    <p class="lead">I graduated, I threw a party about it, and you showed up. I'm still not over it.</p>
+    <div class="prose">
+      <p>The photos are below — the booth strips and everything the photographer caught, in order. Take whatever you're in. Take whatever you like. They're yours.</p>
+    </div>
+    <p class="ask"><a href="#upload">If you got video of the speech, scroll down — I need it ↓</a></p>
+  </section>
+
+  <section class="gcards-wrap">
+    <div class="gcards">
+      <a class="gcard" href="/photos" id="card-photographer">
+        <div class="inner">
+          <div class="cover" id="cover-photographer">
+            <p class="cap">The photographer's</p>
+          </div>
+          <div class="gmeta">
+            <p class="gname">Photos</p>
+            <p class="gcount" id="count-photographer">&nbsp;</p>
+          </div>
+        </div>
+      </a>
+      <a class="gcard" href="/booth" id="card-photobooth">
+        <div class="inner">
+          <div class="cover strip" id="cover-photobooth">
+            <p class="cap">The booth strips</p>
+          </div>
+          <div class="gmeta">
+            <p class="gname">Photo booth</p>
+            <p class="gcount" id="count-photobooth">&nbsp;</p>
+          </div>
+        </div>
+      </a>
+    </div>
+  </section>
+
+  <section class="col" id="upload">
+    <div id="uploader"></div>
+  </section>
+
+  <section class="col tight">
+    <p class="note">Made with the same care as the invitation. Thank you again, for all of it.</p>
+  </section>
+
+</main>
+
+<script src="/assets/vendor/tus.min.js"></script>
+<script type="module" src="/assets/upload.js"></script>
+<script type="module">
+  // Gallery cards: cover photo + live count per gallery, straight from
+  // the photos table. Cover = a chosen sort_order per gallery.
+  import { SUPABASE_URL, SUPABASE_KEY, GALLERY_BUCKET } from '/assets/supabase-config.js'
+  const COVER = { photographer: 4, photobooth: 0 }
+  const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
+  const publicUrl = (p) => `${SUPABASE_URL}/storage/v1/object/public/${GALLERY_BUCKET}/${p}`
+
+  for (const [gallery, sortOrder] of Object.entries(COVER)) {
+    const cover = document.getElementById(`cover-${gallery}`)
+    const count = document.getElementById(`count-${gallery}`)
+    fetch(`${SUPABASE_URL}/rest/v1/photos?select=thumb_path,width,height&gallery=eq.${gallery}&sort_order=eq.${sortOrder}`, { headers })
+      .then((r) => r.json())
+      .then(([row]) => {
+        if (!row) return
+        const img = document.createElement('img')
+        // 1000px thumb: plenty for a card, a fraction of the full derivative
+        img.src = publicUrl(row.thumb_path.replace(/\.webp$/, '@2x.webp'))
+        img.width = row.width
+        img.height = row.height
+        img.alt = ''
+        img.decoding = 'async'
+        cover.prepend(img)
+      })
+      .catch(() => {})
+    fetch(`${SUPABASE_URL}/rest/v1/photos?select=id&gallery=eq.${gallery}`, { headers: { ...headers, Prefer: 'count=exact', Range: '0-0' } })
+      .then((r) => {
+        const m = (r.headers.get('content-range') || '').match(/\/(\d+)$/)
+        if (m) count.textContent = `${m[1]} photos`
+      })
+      .catch(() => {})
+  }
+</script>
+</body>
+</html>
