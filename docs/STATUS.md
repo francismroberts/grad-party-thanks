@@ -1,4 +1,4 @@
-# Status — updated 2026-09-11 05:10 PT
+# Status — updated 2026-09-11 05:22 PT
 
 ## Built this session
 - Repo scaffold, `CLAUDE.md`, `scripts/ingest.js` (stage 2), `scripts/serve.mjs` (local preview; system Python can't read ~/Documents).
@@ -6,7 +6,7 @@
 - **Both galleries fully ingested, 0 failures.** Photobooth 70 rows (all 600×1800). Photographer 294 rows (178 landscape, 116 portrait, mostly 5760×3840 / 3840×5760, 16 odd crops). 364 rows total, no NULLs, `sort_order` contiguous and chronological, every original verified GPS-free with camera EXIF kept.
 - **Stage 3: `booth.html`** with `assets/site.css` (RSVP tokens verbatim) and `assets/gallery.js` (shared loader + lightbox). Tested at 390/768/1440/1920: 2/3/5 columns, no overflow, 40-then-scroll paging, lightbox with keys/swipe/Esc/close, focus return, `?download=` links confirmed to return `Content-Disposition: attachment`.
 - **Chapters on `photos.html`:** seven sections by `taken_at` (UTC, to the second), defined as JSON in the page; headings + counts derived from one small capture-time fetch and rendered before any photo. Verified 35/33/102/30/26/49/19 = 294. Spec updated to match everything built so far.
-- **Jump links + on-demand loading.** Understated row of chapter names above the gallery (horizontal scroll on phones). Loading is now by block of 40 at any index: a jump loads its own chapter's blocks first and scrolls there; other sections fill in when scrolled into view. Growth above the viewport is compensated by hand (`overflow-anchor:none`), so a jump to the speech then a scroll up doesn't drift. `#chapter-N` deep links work on load. Booth keeps the sentinel path, verified 40 then 70.
+- **Chapter pill + on-demand loading.** Floating pill near the bottom centre (replaced the earlier horizontal jump-link row): left zone names the chapter in view, updates live, opens a sheet of all chapters with counts and the current one in lavender; right zone is back-to-top. Hidden until scrolled into the photos; Escape/backdrop/close/selection all close the sheet. Booth has the up-arrow-only pill. Loading is by block of 40 at any index: a jump loads its own chapter's blocks first and scrolls there; other sections fill in when scrolled into view. Growth above the viewport is compensated by hand (`overflow-anchor:none`). `#chapter-N` deep links work on load. Booth keeps the sentinel path, verified 40 then 70.
 - **Stage 4: `photos.html`** with justified rows (`class="grid justified"`), in the shared module. Packs rows to a target height (180 mobile / 260 desktop), scales each to fill the width exactly, tiles absolutely positioned. Verified at 1440: 294 photos, 66 rows, every row edge exactly on the container width, no overlaps, row heights 228–302. Re-lays out on resize.
 
 ## Decisions that differ from the spec

@@ -297,12 +297,24 @@ derived from the data, never hardcoded.
 Heading: tracked uppercase label for the name, italic serif for the
 count, hairline rule beneath. Booth has no chapters.
 
-**Jump links.** A row of chapter names above the gallery, small tracked
-uppercase, horizontally scrollable on phones rather than wrapping.
-Reaching the speech in one tap is the main reason chapters exist. A
-jump loads the target chapter's own photos first (the module knows every
-photo's chapter and index before any image arrives), scrolls there, and
-fills the rest in as the person scrolls. `#chapter-N` works as a link.
+**Chapter pill.** A single rounded pill fixed near the bottom centre,
+hidden until the person has scrolled into the photos. Two zones divided
+by a hairline. Left: the name of the chapter currently in view (updates
+live on scroll; long names truncate with an ellipsis) plus an up-chevron
+that opens a sheet listing all chapters with counts, current one in
+lavender. Right: an up-arrow back to top. Sheet closes on selection,
+close button, backdrop tap, or Escape. Styling in the family of the
+RSVP site's music toggle: cream with a slight blur, hairline border,
+soft shadow, ink text, lavender accents; the sheet has rounded corners.
+44×44px targets, `prefers-reduced-motion` respected, page gets bottom
+padding so the pill never covers the last row. Booth has the same pill
+with only the up-arrow.
+
+A jump loads the target chapter's own photos first (the module knows
+every photo's chapter and index before any image arrives), scrolls
+there, and fills the rest in as the person scrolls. `#chapter-N` works
+as a link. Reaching the speech in one tap is the main reason chapters
+exist.
 
 ---
 

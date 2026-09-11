@@ -18,7 +18,9 @@
 //       chapter's `from`. Counts are derived from the data. Blocks load
 //       for whichever sections are on screen or just below, so a jump
 //       link fills its own chapter first and the rest fills in on scroll.
-//       An optional <nav id="jumps"> gets one link per chapter.
+//       A floating pill (#pill) names the chapter in view and opens a
+//       sheet (#sheet) listing all chapters; its right zone scrolls to top.
+//       Booth has the pill with only the back-to-top zone.
 //
 // Row shape (see docs/thank-you-site-spec.md + docs/STATUS.md):
 //   id, thumb_path, full_path, original_path, width, height, sort_order
@@ -50,7 +52,15 @@ const host = chapterRoot || singleGrid
 const justified = host.classList.contains('justified')
 const chaptersJson = document.getElementById('chapters')
 const chapters = chapterRoot && chaptersJson ? JSON.parse(chaptersJson.textContent) : null
-const jumpsNav = document.getElementById('jumps')
+
+const pill = document.getElementById('pill')
+const pillChapter = document.getElementById('pill-chapter')
+const pillName = document.getElementById('pill-name')
+const pillTop = document.getElementById('pill-top')
+const sheet = document.getElementById('sheet')
+const sheetList = document.getElementById('sheet-list')
+const sheetClose = document.getElementById('sheet-close')
+const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)')
 
 const status = document.getElementById('gstatus')
 const sentinel = document.getElementById('sentinel')
@@ -171,16 +181,24 @@ async function loadChapters() {
   })
   chapterRoot.appendChild(frag)
 
-  if (jumpsNav) {
+  if (sheetList) {
     chapters.forEach((c, k) => {
-      const a = document.createElement('a')
-      a.href = `#chapter-${k + 1}`
-      a.textContent = c.title
-      a.addEventListener('click', (e) => {
-        e.preventDefault()
+      const li = document.createElement('li')
+      const b = document.createElement('button')
+      b.type = 'button'
+      b.dataset.chapter = k
+      const name = document.createElement('span')
+      name.textContent = c.title
+      const n = document.createElement('span')
+      n.className = 'n'
+      n.textContent = `${counts[k]} photo${counts[k] === 1 ? '' : 's'}`
+      b.append(name, n)
+      b.addEventListener('click', () => {
+        sheet.close()
         jumpTo(k)
       })
-      jumpsNav.appendChild(a)
+      li.appendChild(b)
+      sheetList.appendChild(li)
     })
   }
 }
@@ -287,6 +305,7 @@ function placeTiles(rows, startIndex) {
       if (delta) window.scrollBy(0, delta)
     }
   }
+  updatePill()
 }
 
 // ---------- justified rows ----------
@@ -406,14 +425,81 @@ function fillVisible() {
     return
   }
 }
-if (chapters) {
+{
   let raf = 0
   const schedule = () => {
     cancelAnimationFrame(raf)
-    raf = requestAnimationFrame(fillVisible)
+    raf = requestAnimationFrame(() => {
+      if (chapters) fillVisible()
+      updatePill()
+    })
   }
   window.addEventListener('scroll', schedule, { passive: true })
   window.addEventListener('resize', schedule)
+}
+
+// ---------- floating pill + chapter sheet ----------
+// Appears once the person has scrolled into the photos. On chapter
+// pages the left zone names the chapter currently in view: the section
+// whose top has passed a reference line a little way down the viewport.
+let currentChapter = -1
+function updatePill() {
+  if (!pill) return
+  const inGallery = host.getBoundingClientRect().top < 0
+  pill.classList.toggle('show', inGallery)
+  pill.setAttribute('aria-hidden', String(!inGallery))
+  pill.inert = !inGallery
+  if (!sections.length || !pillName) return
+  const ref = Math.min(window.innerHeight * 0.35, 240)
+  let k = 0
+  for (let i = 0; i < sections.length; i++) {
+    if (sections[i].getBoundingClientRect().top <= ref) k = i
+  }
+  if (k === currentChapter) return
+  currentChapter = k
+  pillName.textContent = chapters[k].title
+  if (sheetList) {
+    sheetList.querySelectorAll('button').forEach((b) => {
+      if (Number(b.dataset.chapter) === k) b.setAttribute('aria-current', 'true')
+      else b.removeAttribute('aria-current')
+    })
+  }
+}
+
+if (pillTop) {
+  pillTop.addEventListener('click', () => {
+    window.scrollTo({ top: 0, behavior: reducedMotion.matches ? 'auto' : 'smooth' })
+  })
+}
+
+if (pillChapter && sheet) {
+  pillChapter.addEventListener('click', () => {
+    sheet.showModal()
+    pillChapter.setAttribute('aria-expanded', 'true')
+    const cur = sheetList?.querySelector('button[aria-current="true"]') || sheetList?.querySelector('button')
+    cur?.focus()
+  })
+  sheetClose?.addEventListener('click', () => sheet.close())
+  // Escape closes. Native <dialog> cancel usually does this, but not in
+  // every browser once focus sits on a button inside, so handle it too.
+  sheet.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      sheet.close()
+    }
+  })
+  // tap on the backdrop (outside the sheet's box) closes
+  sheet.addEventListener('click', (e) => {
+    const r = sheet.getBoundingClientRect()
+    const outside = e.clientX < r.left || e.clientX > r.right || e.clientY < r.top || e.clientY > r.bottom
+    if (outside) sheet.close()
+  })
+  sheet.addEventListener('close', () => {
+    pillChapter.setAttribute('aria-expanded', 'false')
+    if (document.activeElement === document.body || sheet.contains(document.activeElement)) {
+      pillChapter.focus({ preventScroll: true })
+    }
+  })
 }
 
 // ---------- jump links ----------
@@ -544,4 +630,5 @@ loadChapters()
     } else {
       loadBlock(0).finally(() => sentinelObserver.observe(sentinel))
     }
+    updatePill()
   })

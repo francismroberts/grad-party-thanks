@@ -35,7 +35,8 @@ embedded as base64.
 │   └── gallery.js            Gallery loader + lightbox, shared by booth.html and photos.html.
 │                             Two layouts: CSS grid (booth, uniform strips) and justified
 │                             rows (photos, mixed aspect ratios; class="grid justified").
-│                             Optional chapters + jump links from a JSON block in the page.
+│                             Optional chapters (JSON block in the page) with a floating
+│                             chapter pill; booth gets the back-to-top-only pill.
 ├── docs/
 │   ├── thank-you-site-spec.md
 │   └── STATUS.md             Session handoff. Read this first.
