@@ -96,6 +96,27 @@
   </div>
 </dialog>
 
+<!-- Floating pill: current chapter (opens the chapter sheet) · back to top.
+     Hidden until the person has scrolled into the photos. -->
+<div class="pill" id="pill" aria-hidden="true">
+  <button type="button" class="pill-chapter" id="pill-chapter" aria-haspopup="dialog" aria-expanded="false" aria-controls="sheet">
+    <span class="pill-name" id="pill-name">Chapters</span>
+    <svg class="chev" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 8l4-4 4 4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+  <span class="pill-rule" aria-hidden="true"></span>
+  <button type="button" class="pill-top" id="pill-top" aria-label="Back to top">
+    <svg viewBox="0 0 12 12" aria-hidden="true"><path d="M6 10V2M2.5 5.5L6 2l3.5 3.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+</div>
+
+<dialog class="sheet" id="sheet" aria-label="Chapters">
+  <div class="sheet-head">
+    <p class="label">Chapters</p>
+    <button type="button" class="tbtn" id="sheet-close" aria-label="Close">Close ✕</button>
+  </div>
+  <ul class="sheet-list" id="sheet-list"></ul>
+</dialog>
+
 <script type="module" src="/assets/gallery.js"></script>
 </body>
 </html>
