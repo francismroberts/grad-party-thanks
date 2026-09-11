@@ -197,20 +197,21 @@ async function listObjects(prefix) {
   return names
 }
 
-async function existingRowIds() {
-  const ids = new Set()
+// Map of id → taken_at (ISO string or null) for rows already in the gallery.
+async function existingRows() {
+  const rows = new Map()
   const pageSize = 1000
   for (let from = 0; ; from += pageSize) {
     const { data, error } = await supabase
       .from('photos')
-      .select('id')
+      .select('id, taken_at')
       .eq('gallery', gallery)
       .range(from, from + pageSize - 1)
     if (error) throw new Error(`reading photos rows: ${error.message}`)
-    for (const r of data) ids.add(r.id)
+    for (const r of data) rows.set(r.id, r.taken_at)
     if (data.length < pageSize) break
   }
-  return ids
+  return rows
 }
 
 // Strip every GPS tag in place. Camera/lens/exposure tags are untouched.
@@ -229,31 +230,46 @@ async function stripGps(path) {
   }
 }
 
-async function readCaptureTime(path) {
+// Every per-photo read below takes a Buffer, not a path. On Node 26+
+// an unclosed FileHandle is a hard ERR_INVALID_STATE at GC time, and
+// path-based readers were tripping it. Reading the working file once
+// into memory sidesteps that and also means one read per photo.
+// Capture time, best source first:
+//   1. EXIF DateTimeOriginal / CreateDate
+//   2. A YYYYMMDD_HHMMSS[_mmm] timestamp in the filename (the photobooth
+//      export has no EXIF but names files this way)
+//   3. File mtime — last resort, often just the copy time
+async function readCaptureTime(buf, sourcePath) {
   try {
-    const exif = await exifr.parse(path, { pick: ['DateTimeOriginal', 'CreateDate'] })
+    const exif = await exifr.parse(buf, { pick: ['DateTimeOriginal', 'CreateDate'] })
     const d = exif?.DateTimeOriginal || exif?.CreateDate
     if (d instanceof Date && !Number.isNaN(d.getTime())) return { takenAt: d, source: 'exif' }
   } catch {
     // no EXIF block (PNGs, screenshots) — fall through
   }
-  const s = await stat(path)
-  return { takenAt: s.mtime, source: 'mtime' }
+  const m = basename(sourcePath).match(/(\d{4})(\d{2})(\d{2})_(\d{2})(\d{2})(\d{2})(?:_(\d{3}))?/)
+  if (m) {
+    const [, y, mo, d, h, mi, s, ms] = m
+    const dt = new Date(+y, +mo - 1, +d, +h, +mi, +s, ms ? +ms : 0)
+    if (!Number.isNaN(dt.getTime())) return { takenAt: dt, source: 'filename' }
+  }
+  const st = await stat(sourcePath)
+  return { takenAt: st.mtime, source: 'mtime' }
 }
 
 // Width/height after EXIF orientation is applied, which is what the
 // browser will display and what the tile needs to reserve.
-async function orientedDimensions(path) {
-  const m = await sharp(path).metadata()
+async function orientedDimensions(buf) {
+  const m = await sharp(buf).metadata()
   const swap = m.orientation >= 5 && m.orientation <= 8
   return swap ? { width: m.height, height: m.width } : { width: m.width, height: m.height }
 }
 
-async function makeDerivative(path, edge, quality) {
+async function makeDerivative(buf, edge, quality) {
   // .rotate() with no args bakes EXIF orientation into the pixels.
   // sharp drops all metadata by default (no withMetadata), so the
   // output carries no EXIF at all.
-  return sharp(path)
+  return sharp(buf)
     .rotate()
     .resize({ width: edge, height: edge, fit: 'inside', withoutEnlargement: true })
     .webp({ quality })
@@ -301,7 +317,7 @@ async function main() {
 
   process.stdout.write('checking what already exists… ')
   const [rows, thumbs, fulls, originals] = await Promise.all([
-    existingRowIds(),
+    existingRows(),
     listObjects(`${gallery}/thumb`),
     listObjects(`${gallery}/full`),
     listObjects(`${gallery}/original`),
@@ -310,9 +326,10 @@ async function main() {
   console.log()
 
   const workDir = await mkdtemp(join(tmpdir(), 'grad-ingest-'))
-  const summary = { processed: 0, skipped: 0, skippedDone: 0, skippedLimit: 0, failed: 0, mtimeFallback: 0 }
+  const summary = { processed: 0, skipped: 0, skippedDone: 0, skippedLimit: 0, failed: 0, mtimeFallback: 0, datesFixed: 0 }
   const failures = []
   let attempted = 0
+  let datesChanged = false
 
   try {
     for (let i = 0; i < hashed.length; i++) {
@@ -321,7 +338,27 @@ async function main() {
       const tag = `[${String(i + 1).padStart(String(hashed.length).length)}/${hashed.length}] ${name} → ${short(id)}`
 
       if (rows.has(id)) {
-        console.log(`${tag}  skipped (already ingested)`)
+        // Already ingested. Cheap self-heal: if the capture time we'd
+        // compute now differs from what's stored (an earlier run used a
+        // worse source), update it so sort_order converges on re-run.
+        let note = ''
+        try {
+          const { takenAt, source } = await readCaptureTime(await readFile(file), file)
+          const stored = rows.get(id)
+          if (!stored || Date.parse(stored) !== takenAt.getTime()) {
+            const { error } = await supabase
+              .from('photos')
+              .update({ taken_at: takenAt.toISOString() })
+              .eq('id', id)
+            if (error) throw new Error(error.message)
+            summary.datesFixed++
+            datesChanged = true
+            note = `, taken_at updated from ${source}`
+          }
+        } catch (err) {
+          note = `, taken_at check failed: ${err.message}`
+        }
+        console.log(`${tag}  skipped (already ingested${note})`)
         summary.skipped++
         summary.skippedDone++
         continue
@@ -346,9 +383,12 @@ async function main() {
         await copyFile(file, work)
         await stripGps(work)
 
+        // Single read of the stripped file; everything below uses it.
+        const stripped = await readFile(work)
+
         // 3. dimensions + capture time
-        const { width, height } = await orientedDimensions(work)
-        const { takenAt, source } = await readCaptureTime(work)
+        const { width, height } = await orientedDimensions(stripped)
+        const { takenAt, source } = await readCaptureTime(stripped, file)
         if (source === 'mtime') summary.mtimeFallback++
 
         // 4–5. derivatives and uploads, skipping objects already there
@@ -360,14 +400,13 @@ async function main() {
         ]
         for (const p of plan) {
           if (p.present) continue
-          const buf = await makeDerivative(work, p.spec.edge, p.spec.quality)
+          const buf = await makeDerivative(stripped, p.spec.edge, p.spec.quality)
           await upload(p.object, buf, 'image/webp')
           uploaded.push(`${p.spec.key} ${(buf.length / 1024).toFixed(0)}K`)
         }
         if (!originals.has(`${id}${ext}`)) {
-          const buf = await readFile(work)
-          await upload(originalPath, buf, MIME_BY_EXT[ext] || 'application/octet-stream')
-          uploaded.push(`original ${(buf.length / 1024 / 1024).toFixed(1)}M`)
+          await upload(originalPath, stripped, MIME_BY_EXT[ext] || 'application/octet-stream')
+          uploaded.push(`original ${(stripped.length / 1024 / 1024).toFixed(1)}M`)
         }
 
         // 6. row — sort_order is fixed up for the whole gallery below
@@ -385,7 +424,7 @@ async function main() {
 
         summary.processed++
         const detail = uploaded.length ? uploaded.join(', ') : 'objects already present, row added'
-        const when = source === 'mtime' ? ' [no EXIF date, used mtime]' : ''
+        const when = source === 'exif' ? '' : ` [no EXIF date, used ${source}]`
         console.log(`${tag}  ok  ${width}×${height}  ${detail}${when}`)
       } catch (err) {
         summary.failed++
@@ -397,7 +436,7 @@ async function main() {
     }
 
     // Recompute sort_order across the whole gallery by capture time.
-    if (summary.processed > 0) {
+    if (summary.processed > 0 || datesChanged) {
       process.stdout.write('\nrecomputing sort_order… ')
       const changed = await resortGallery()
       console.log(`${changed} row(s) updated`)
@@ -412,7 +451,10 @@ async function main() {
   console.log(`  skipped   : ${summary.skipped}  (already ingested ${summary.skippedDone}, past --limit ${summary.skippedLimit})`)
   console.log(`  failed    : ${summary.failed}`)
   if (summary.mtimeFallback) {
-    console.log(`  note      : ${summary.mtimeFallback} file(s) had no EXIF date; taken_at uses file mtime`)
+    console.log(`  note      : ${summary.mtimeFallback} file(s) had no EXIF date or filename timestamp; taken_at uses file mtime`)
+  }
+  if (summary.datesFixed) {
+    console.log(`  note      : ${summary.datesFixed} existing row(s) had taken_at corrected`)
   }
   if (failures.length) {
     console.log()
