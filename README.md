@@ -84,7 +84,35 @@ cd scripts && npm install
 ```
 
 Before running the pipeline, confirm the source photos are real files
-and not iCloud placeholders. The spec has the exact check.
+and not iCloud placeholders. The spec has the exact check. The script
+also refuses to run if it finds a `.icloud` stub in the folder.
+
+Test on a few files first, then run the rest:
+
+```bash
+cd scripts && node ingest.js --gallery photobooth /Users/francis/Documents/Graduation/photobooth --limit 5
+```
+
+```bash
+cd scripts && node ingest.js --gallery photobooth /Users/francis/Documents/Graduation/photobooth
+```
+
+Re-running is safe. Each photo's id is derived from a hash of the
+source file, so files already in the `photos` table are skipped and
+`--limit` only counts files that still need work. Source photos are
+never modified; GPS is stripped from a temp copy and verified gone
+before anything uploads.
+
+Objects written per photo, in the `gallery` bucket:
+
+| Path | Size | Notes |
+|---|---|---|
+| `<gallery>/thumb/<id>.webp` | 500px | `photos.thumb_path` |
+| `<gallery>/thumb/<id>@2x.webp` | 1000px | srcset 2x, derived from `thumb_path` |
+| `<gallery>/full/<id>.webp` | 2000px | `photos.full_path` |
+| `<gallery>/original/<id>.jpg` | as shot | GPS stripped, all other EXIF kept |
+
+Archive generation is a later stage and is not part of the script yet.
 
 ## Browser-side libraries
 
