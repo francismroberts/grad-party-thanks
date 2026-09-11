@@ -61,7 +61,7 @@
       </a>
       <a class="gcard" href="/booth" id="card-photobooth">
         <div class="inner">
-          <div class="cover strip" id="cover-photobooth">
+          <div class="cover" id="cover-photobooth">
             <p class="cap">The booth strips</p>
           </div>
           <div class="gmeta">
@@ -89,11 +89,15 @@
   // Gallery cards: cover photo + live count per gallery, straight from
   // the photos table. Cover = a chosen sort_order per gallery.
   import { SUPABASE_URL, SUPABASE_KEY, GALLERY_BUCKET } from '/assets/supabase-config.js'
-  const COVER = { photographer: 4, photobooth: 2 }
+  // sort_order per gallery, plus where to focus the 4:3 crop (object-position)
+  const COVER = {
+    photographer: { n: 94, pos: '50% 38%' },
+    photobooth: { n: 2, pos: 'top' },
+  }
   const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
   const publicUrl = (p) => `${SUPABASE_URL}/storage/v1/object/public/${GALLERY_BUCKET}/${p}`
 
-  for (const [gallery, sortOrder] of Object.entries(COVER)) {
+  for (const [gallery, { n: sortOrder, pos }] of Object.entries(COVER)) {
     const cover = document.getElementById(`cover-${gallery}`)
     const count = document.getElementById(`count-${gallery}`)
     fetch(`${SUPABASE_URL}/rest/v1/photos?select=thumb_path,width,height&gallery=eq.${gallery}&sort_order=eq.${sortOrder}`, { headers })
@@ -103,6 +107,7 @@
         const img = document.createElement('img')
         // 1000px thumb: plenty for a card, a fraction of the full derivative
         img.src = publicUrl(row.thumb_path.replace(/\.webp$/, '@2x.webp'))
+        if (pos) img.style.objectPosition = pos
         img.width = row.width
         img.height = row.height
         img.alt = ''
