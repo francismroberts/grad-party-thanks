@@ -1,4 +1,4 @@
-# Status — updated 2026-09-11 05:04 PT
+# Status — updated 2026-09-11 05:10 PT
 
 ## Built this session
 - Repo scaffold, `CLAUDE.md`, `scripts/ingest.js` (stage 2), `scripts/serve.mjs` (local preview; system Python can't read ~/Documents).
@@ -6,6 +6,7 @@
 - **Both galleries fully ingested, 0 failures.** Photobooth 70 rows (all 600×1800). Photographer 294 rows (178 landscape, 116 portrait, mostly 5760×3840 / 3840×5760, 16 odd crops). 364 rows total, no NULLs, `sort_order` contiguous and chronological, every original verified GPS-free with camera EXIF kept.
 - **Stage 3: `booth.html`** with `assets/site.css` (RSVP tokens verbatim) and `assets/gallery.js` (shared loader + lightbox). Tested at 390/768/1440/1920: 2/3/5 columns, no overflow, 40-then-scroll paging, lightbox with keys/swipe/Esc/close, focus return, `?download=` links confirmed to return `Content-Disposition: attachment`.
 - **Chapters on `photos.html`:** seven sections by `taken_at` (UTC, to the second), defined as JSON in the page; headings + counts derived from one small capture-time fetch and rendered before any photo. Verified 35/33/102/30/26/49/19 = 294. Spec updated to match everything built so far.
+- **Jump links + on-demand loading.** Understated row of chapter names above the gallery (horizontal scroll on phones). Loading is now by block of 40 at any index: a jump loads its own chapter's blocks first and scrolls there; other sections fill in when scrolled into view. Growth above the viewport is compensated by hand (`overflow-anchor:none`), so a jump to the speech then a scroll up doesn't drift. `#chapter-N` deep links work on load. Booth keeps the sentinel path, verified 40 then 70.
 - **Stage 4: `photos.html`** with justified rows (`class="grid justified"`), in the shared module. Packs rows to a target height (180 mobile / 260 desktop), scales each to fill the width exactly, tiles absolutely positioned. Verified at 1440: 294 photos, 66 rows, every row edge exactly on the container width, no overlaps, row heights 228–302. Re-lays out on resize.
 
 ## Decisions that differ from the spec
@@ -21,5 +22,5 @@
 - Both gallery headers have an empty `.actions` slot for Select (stage 5) and Download all (stage 6). Archives don't exist yet.
 
 ## Next session should start with
-1. Stage 5: Select mode + JSZip in `gallery.js`, 40-photo cap. Selection must work in both layouts; in justified mode the checkbox overlays the absolutely positioned tile.
+1. Stage 5: Select mode + JSZip in `gallery.js`, 40-photo cap. Selection must work in both layouts; in justified mode the checkbox overlays the absolutely positioned tile. Note `photos` is now a sparse array (blocks load out of order); "select all on this page" should mean loaded tiles.
 2. Stage 6: archive generation in `ingest.js` + "Download all" with measured sizes.

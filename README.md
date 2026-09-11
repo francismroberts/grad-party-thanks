@@ -34,7 +34,8 @@ embedded as base64.
 │   ├── site.css              Shared tokens and components, copied from the RSVP site
 │   └── gallery.js            Gallery loader + lightbox, shared by booth.html and photos.html.
 │                             Two layouts: CSS grid (booth, uniform strips) and justified
-│                             rows (photos, mixed aspect ratios; class="grid justified")
+│                             rows (photos, mixed aspect ratios; class="grid justified").
+│                             Optional chapters + jump links from a JSON block in the page.
 ├── docs/
 │   ├── thank-you-site-spec.md
 │   └── STATUS.md             Session handoff. Read this first.

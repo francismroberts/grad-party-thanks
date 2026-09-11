@@ -297,6 +297,13 @@ derived from the data, never hardcoded.
 Heading: tracked uppercase label for the name, italic serif for the
 count, hairline rule beneath. Booth has no chapters.
 
+**Jump links.** A row of chapter names above the gallery, small tracked
+uppercase, horizontally scrollable on phones rather than wrapping.
+Reaching the speech in one tap is the main reason chapters exist. A
+jump loads the target chapter's own photos first (the module knows every
+photo's chapter and index before any image arrives), scrolls there, and
+fills the rest in as the person scrolls. `#chapter-N` works as a link.
+
 ---
 
 ## Database
@@ -444,8 +451,9 @@ about **2.4 GB**, trivial against a 100 GB quota.
 
 - Load **40 at a time**, fetch more on scroll. Never render 300 at once.
   In chaptered galleries, headings and counts render first from one
-  small fetch of capture times; tiles land in their section as pages
-  arrive.
+  small fetch of capture times; blocks of 40 load for whichever sections
+  are on screen or just below, in any order, and tiles land in their
+  section. Content inserted above the viewport is scroll-compensated.
 - Tap opens a lightbox with the `full` image, nav, and one Download
   button (original JPG)
 - Lightbox image capped at `90vw` / `85vh`

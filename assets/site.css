@@ -89,12 +89,24 @@ a:hover{text-decoration-color:var(--lavender);}
 /* ---------- chapters ----------
    Sections inside .wide, each with its own grid. Heading: tracked
    uppercase label for the name, italic serif for the count, hairline
-   rule beneath. */
+   rule beneath. Content can be inserted above the viewport as blocks
+   load; gallery.js compensates scroll itself, so the browser must not. */
+.chapters{overflow-anchor:none;}
 .chapter{margin-top:clamp(36px,6vw,56px);}
 .chapter:first-child{margin-top:0;}
 .chead{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:0 4px 10px;border-bottom:1px solid var(--line-soft);margin:0 0 clamp(10px,2vw,16px);}
 .chead .ctitle{font-family:var(--sans);font-size:var(--label);font-weight:700;letter-spacing:.22em;text-transform:uppercase;color:var(--ink);margin:0;line-height:1.4;}
 .chead .ccount{font-family:var(--serif);font-style:italic;font-size:clamp(15px,3.4vw,17px);color:var(--ink-soft);margin:0;white-space:nowrap;}
+
+/* jump links: one understated row, scrolls sideways on narrow screens */
+.jumps{display:flex;gap:0 22px;overflow-x:auto;white-space:nowrap;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding:0 4px;margin:0 0 clamp(14px,3vw,22px);
+  -webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);}
+.jumps::-webkit-scrollbar{display:none;}
+.jumps a{display:inline-flex;align-items:center;min-height:44px;font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;color:var(--ink-soft);text-decoration:none;flex:0 0 auto;}
+.jumps a:hover{color:var(--lavender);}
+.jumps a:focus-visible{outline:2px solid var(--lavender);outline-offset:2px;}
+.jumps a:last-child{padding-right:28px;}
+.ctitle:focus{outline:none;}
 
 /* ---------- justified rows (photographer) ----------
    gallery.js packs photos into rows at a target height, then scales each
