@@ -15,7 +15,6 @@
 ## Broken or unfinished
 - Referenced but not in repo: `favicon.ico`, `favicon-32.png`, `favicon-16.png`, `apple-touch-icon.png` (copy from RSVP site) and `og-image.jpg` (JPEG < 200 KB). Stage 9.
 - `booth.html` header has an empty `.actions` slot for Select (stage 5) and Download all (stage 6). Archives don't exist yet.
-- `scripts/package-lock.json` is untracked. Commit it or ignore it.
 
 ## Next session should start with
 1. Stage 4: `photos.html`. Copy `booth.html`, change `data-gallery="photographer"`, copy, and OG tags. `gallery.js` already handles mixed aspect ratios and 294 rows. Test scroll paging past 40/80/…/280.
