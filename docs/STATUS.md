@@ -1,4 +1,4 @@
-# Status — updated 2026-09-11 03:00 PT
+# Status — updated 2026-09-11 03:08 PT
 
 ## Built this session
 - Repo scaffold: `.gitignore`, `.env.example`, `CNAME`, `README.md`, `scripts/package.json`.
@@ -10,7 +10,8 @@
 - 2x thumb lives at `<gallery>/thumb/<id>@2x.webp`. Spec defines the 1000px derivative but the table has no column; pages derive it from `thumb_path`.
 - Originals keep their real extension (`.jpg`, `.png`). For the JPEG sources this matches the spec exactly.
 - Capture time falls back EXIF → `YYYYMMDD_HHMMSS` in the filename → file mtime. The photobooth export has no EXIF at all, and mtime was just the copy time, so the filename fallback is what actually orders that gallery.
-- Already-ingested rows get `taken_at` re-checked on every run and corrected if the source changed. Keeps sort order converging without manual fixes.
+- The live `photos` table has an `original_path` column the spec's SQL doesn't list. The script writes it (`<gallery>/original/<id><ext>`). Verified non-NULL on all 11 rows and each path serves an object.
+- Already-ingested rows are self-healed on every run: `taken_at` corrected if the source changed, `original_path` filled if NULL. `--limit 0` runs only that repair pass. No separate repair flag.
 - Admin key is the modern `sb_secret_` key in `.env`, not the legacy `service_role` JWT.
 
 ## Broken or unfinished
