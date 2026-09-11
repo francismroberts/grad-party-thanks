@@ -761,7 +761,14 @@ function updateSelbar() {
   const over = bytes > ZIP_CAP
   selDownload.disabled = n === 0 || over
   if (over) {
-    note(`That's a lot — ${fmtBytes(bytes)}. Grab the whole gallery instead, or pick fewer.`, 'cap')
+    // Point at the originals archive (same content as a selection zip)
+    // so this is a way out, not a dead end.
+    if (archives.originals) {
+      note(`That's a lot — ${fmtBytes(bytes)}. `, 'cap',
+        { text: 'Grab the whole gallery instead', href: archives.originals.href }, ', or pick fewer.')
+    } else {
+      note(`That's a lot — ${fmtBytes(bytes)}. Pick fewer photos.`, 'cap')
+    }
   } else if (noteKind === 'cap') {
     note(null)
   }
@@ -769,12 +776,55 @@ function updateSelbar() {
 
 // One note line under the bar. 'cap' notes come and go with the
 // selection size; 'error' notes stay until the next selection change.
+// Optional link is built with DOM nodes, never HTML strings.
 let noteKind = null
-function note(text, kind = null) {
+function note(text, kind = null, link = null, after = '') {
   if (!selNote) return
   noteKind = text ? kind : null
   selNote.hidden = !text
   selNote.textContent = text || ''
+  if (text && link) {
+    const a = document.createElement('a')
+    a.href = link.href
+    a.textContent = link.text
+    selNote.appendChild(a)
+    if (after) selNote.appendChild(document.createTextNode(after))
+  }
+}
+
+// ---------- download all (pre-built archives) ----------
+// Two archives per gallery live in storage: archives/<gallery>-web.zip
+// and archives/<gallery>-originals.zip. Sizes shown are read from the
+// objects themselves (HEAD → Content-Length), never estimated; the block
+// stays hidden until both are known.
+const archives = { web: null, originals: null }
+async function loadArchives() {
+  const block = document.getElementById('dl-all')
+  if (!block) return
+  const specs = {
+    web: { el: document.getElementById('dl-web'), sizeEl: document.getElementById('dl-web-size'), path: `archives/${gallery}-web.zip`, name: `francis-grad-party-${slug}-all.zip` },
+    originals: { el: document.getElementById('dl-orig'), sizeEl: document.getElementById('dl-orig-size'), path: `archives/${gallery}-originals.zip`, name: `francis-grad-party-${slug}-originals.zip` },
+  }
+  await Promise.all(Object.entries(specs).map(async ([kind, s]) => {
+    try {
+      const res = await fetch(url(s.path), { method: 'HEAD' })
+      const size = res.ok ? Number(res.headers.get('content-length')) : 0
+      if (!size) return
+      const href = downloadUrl(s.path, s.name)
+      s.el.href = href
+      s.sizeEl.textContent = fmtBytes(size)
+      archives[kind] = { href, size }
+    } catch (err) {
+      console.warn(`archive ${kind} unavailable`, err)
+    }
+  }))
+  if (archives.web) {
+    block.hidden = false
+    // originals link only if that archive exists too
+    specs.originals.el.hidden = !archives.originals
+    block.querySelector('.dl-note').hidden = !archives.originals
+  }
+  updateSelbar()
 }
 
 function progress(done, totalBytes) {
@@ -992,6 +1042,7 @@ if (selToggle) {
 
 // ---------- go ----------
 setStatus('Loading…')
+loadArchives()
 loadChapters()
   .catch((err) => {
     // Chapter headings are a nicety; the photos must still load. Fall

@@ -218,15 +218,23 @@ gallery/archives/photographer-web.zip       (~90 MB)
 gallery/archives/photographer-originals.zip (~1.0 GB)
 ```
 
-**Default button = web-sized.** Label it plainly, with sizes measured
-from the real archives, not these estimates:
+**Default button = web-sized.** Label it plainly. Sizes are read at
+page load from the uploaded archive objects (HEAD → Content-Length),
+never estimated, and the block stays hidden until the web archive
+exists:
 
 ```
 Download all · 90 MB
 Download originals · 1.0 GB          (secondary, smaller, below)
 ```
 
-The default must not be the 1.0 GB file. Most guests want photos for
+The default must not be the 1.0 GB file. Archives are built from what
+is in storage (not the source folders) so they match the site byte for
+byte, streamed through `archiver` to a temp file and uploaded as a
+file-backed Blob; `node ingest.js --gallery X --archives` rebuilds them
+on demand, and a full ingest that adds or regenerates photos rebuilds
+them itself. The select-mode over-cap note links to the originals
+archive. Most guests want photos for
 their phone and Instagram; a handful want print quality. Make the
 common case one tap and the heavy case deliberate.
 

@@ -36,12 +36,15 @@
 
 import { createHash } from 'node:crypto'
 import { readdir, readFile, stat, mkdtemp, copyFile, rm } from 'node:fs/promises'
-import { createReadStream } from 'node:fs'
+import { createReadStream, createWriteStream, openAsBlob } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, dirname, extname, join, resolve } from 'node:path'
+import { Readable } from 'node:stream'
+import { finished } from 'node:stream/promises'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
 
+import archiver from 'archiver'
 import dotenv from 'dotenv'
 import exifr from 'exifr'
 import sharp from 'sharp'
@@ -78,6 +81,19 @@ const CROP = {
   photobooth: { expect: { width: 1200, height: 1800 }, left: 0, top: 0, width: 600, height: 1800 },
 }
 
+// ---------- archives ----------
+// One "web" zip (the full WebP derivatives) and one "originals" zip per
+// gallery, with friendly sequential filenames inside, uploaded to
+// archives/<gallery>-<kind>.zip. Built from what is in storage, not from
+// the source folder, so the zip matches the site byte for byte (GPS
+// stripped, photobooth cropped). Streamed: storage → archiver → temp
+// file → file-backed Blob → storage. Nothing is held in memory.
+const SLUG = { photobooth: 'booth', photographer: 'photos' }
+const ARCHIVE_KINDS = {
+  web: { column: 'full_path', suffix: 'web' },
+  originals: { column: 'original_path', suffix: 'originals' },
+}
+
 const INPUT_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff'])
 const MIME_BY_EXT = {
   '.jpg': 'image/jpeg',
@@ -92,8 +108,13 @@ const MIME_BY_EXT = {
 function usage(exitCode = 0) {
   const out = exitCode ? console.error : console.log
   out(`Usage: node ingest.js --gallery <${GALLERIES.join('|')}> <source-folder> [--limit N] [--regenerate]
+       node ingest.js --gallery <${GALLERIES.join('|')}> --archives
 
   --gallery      Which gallery the photos belong to (photos.gallery)
+  --archives     Only (re)build and upload the gallery's two archives
+                 (web + originals) from what is in storage. No source
+                 folder needed. A full ingest run that adds or regenerates
+                 photos rebuilds the archives itself; --limit runs don't.
   --limit N      Stop after N files that need work. Already-ingested
                  files are skipped without counting toward the limit,
                  so re-running with --limit 5 does the next five.
@@ -115,6 +136,7 @@ try {
       gallery: { type: 'string' },
       limit: { type: 'string' },
       regenerate: { type: 'boolean' },
+      archives: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   })
@@ -129,12 +151,13 @@ const gallery = args.values.gallery
 const sourceDir = args.positionals[0]
 const limit = args.values.limit === undefined ? Infinity : Number(args.values.limit)
 const regenerate = Boolean(args.values.regenerate)
+const archivesOnly = Boolean(args.values.archives)
 
 if (!gallery || !GALLERIES.includes(gallery)) {
   console.error(`--gallery must be one of: ${GALLERIES.join(', ')}`)
   usage(1)
 }
-if (!sourceDir) {
+if (!sourceDir && !archivesOnly) {
   console.error('Missing source folder.')
   usage(1)
 }
@@ -322,8 +345,126 @@ function short(id) {
   return id.slice(0, 8)
 }
 
+const publicUrl = (path) => `${SUPABASE_URL}/storage/v1/object/public/${GALLERY_BUCKET}/${path}`
+const fmtMB = (b) => (b >= 1000 * 1024 ** 2 ? `${(b / 1024 ** 3).toFixed(2)} GB` : `${(b / 1024 ** 2).toFixed(1)} MB`)
+
+// ---------- archives ----------
+async function allRows() {
+  const out = []
+  const pageSize = 1000
+  for (let from = 0; ; from += pageSize) {
+    const { data, error } = await supabase
+      .from('photos')
+      .select('id, full_path, original_path, sort_order, taken_at')
+      .eq('gallery', gallery)
+      .order('sort_order', { ascending: true })
+      .range(from, from + pageSize - 1)
+    if (error) throw new Error(`reading photos for archive: ${error.message}`)
+    out.push(...data)
+    if (data.length < pageSize) break
+  }
+  return out
+}
+
+async function buildArchive(kind, rows, workDir) {
+  const spec = ARCHIVE_KINDS[kind]
+  const objectPath = `archives/${gallery}-${spec.suffix}.zip`
+  const tmp = join(workDir, `${gallery}-${spec.suffix}.zip`)
+  const slug = SLUG[gallery] || gallery
+
+  const entries = rows
+    .filter((r) => r[spec.column])
+    .map((r) => ({
+      path: r[spec.column],
+      name: `francis-grad-party-${slug}-${String(r.sort_order + 1).padStart(3, '0')}${extname(r[spec.column]).toLowerCase()}`,
+      date: r.taken_at ? new Date(r.taken_at) : new Date(),
+    }))
+  if (!entries.length) {
+    console.log(`  ${kind}: no rows have ${spec.column}, skipping`)
+    return null
+  }
+
+  process.stdout.write(`  ${kind}: zipping ${entries.length} files… `)
+  const out = createWriteStream(tmp)
+  // store, not deflate: JPEG and WebP don't compress, and it's much faster
+  const archive = archiver('zip', { store: true })
+  let archiveError = null
+  archive.on('error', (err) => { archiveError = err })
+  archive.on('warning', (err) => { if (err.code !== 'ENOENT') archiveError = err })
+  archive.pipe(out)
+
+  // One entry at a time: fetch, stream the body straight into the zip,
+  // wait for archiver to report the entry written, then the next.
+  let n = 0
+  for (const e of entries) {
+    if (archiveError) throw archiveError
+    const res = await fetch(publicUrl(e.path))
+    if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${e.path}`)
+    await new Promise((resolveEntry, rejectEntry) => {
+      const onErr = (err) => rejectEntry(err)
+      archive.once('error', onErr)
+      archive.once('entry', () => { archive.off('error', onErr); resolveEntry() })
+      archive.append(Readable.fromWeb(res.body), { name: e.name, date: e.date })
+    })
+    n++
+    if (n % 50 === 0) process.stdout.write(`${n}… `)
+  }
+  await archive.finalize()
+  await finished(out)
+  if (archiveError) throw archiveError
+  const size = (await stat(tmp)).size
+  console.log(`${n} files, ${fmtMB(size)}`)
+
+  process.stdout.write(`  ${kind}: uploading to ${objectPath}… `)
+  // openAsBlob: a Blob backed by the file on disk, streamed by fetch.
+  // The 1 GB originals zip never sits in memory.
+  const blob = await openAsBlob(tmp, { type: 'application/zip' })
+  const { error } = await bucket.upload(objectPath, blob, { contentType: 'application/zip', upsert: true })
+  if (error) throw new Error(`upload ${objectPath}: ${error.message}`)
+
+  // Verify what the site will see.
+  const head = await fetch(publicUrl(objectPath), { method: 'HEAD' })
+  const served = Number(head.headers.get('content-length'))
+  if (!head.ok || served !== size) {
+    throw new Error(`verify ${objectPath}: HTTP ${head.status}, served ${served} bytes, expected ${size}`)
+  }
+  console.log(`ok, serves ${fmtMB(served)}`)
+  await rm(tmp, { force: true })
+  return { kind, objectPath, size, files: n }
+}
+
+async function buildArchives() {
+  console.log('\nArchives')
+  const { data: info } = await supabase.storage.getBucket(GALLERY_BUCKET)
+  if (info?.file_size_limit) console.log(`  bucket file size limit: ${fmtMB(info.file_size_limit)}`)
+
+  const rows = await allRows()
+  console.log(`  ${rows.length} photos in ${gallery}`)
+  const workDir = await mkdtemp(join(tmpdir(), 'grad-archive-'))
+  const results = []
+  try {
+    for (const kind of Object.keys(ARCHIVE_KINDS)) {
+      results.push(await buildArchive(kind, rows, workDir))
+    }
+  } finally {
+    await rm(workDir, { recursive: true, force: true })
+  }
+  return results.filter(Boolean)
+}
+
 // ---------- main ----------
 async function main() {
+  if (archivesOnly) {
+    console.log(`gallery : ${gallery}`)
+    console.log(`bucket  : ${GALLERY_BUCKET} @ ${SUPABASE_URL}`)
+    console.log('mode    : ARCHIVES ONLY')
+    const results = await buildArchives()
+    console.log()
+    console.log('Summary')
+    for (const r of results) console.log(`  ${r.objectPath.padEnd(40)} ${r.files} files  ${fmtMB(r.size)}`)
+    return
+  }
+
   const src = resolve(sourceDir)
   const srcStat = await stat(src).catch(() => null)
   if (!srcStat?.isDirectory()) {
@@ -510,6 +651,15 @@ async function main() {
       process.stdout.write('\nrecomputing sort_order… ')
       const changed = await resortGallery()
       console.log(`${changed} row(s) updated`)
+    }
+
+    // Archives regenerate whenever photos are added or rebuilt. Test
+    // runs (--limit) skip this; use --archives afterwards if needed.
+    if ((summary.processed > 0 || summary.regenerated > 0) && limit === Infinity && summary.failed === 0) {
+      const results = await buildArchives()
+      for (const r of results) console.log(`  ${r.objectPath.padEnd(40)} ${r.files} files  ${fmtMB(r.size)}`)
+    } else if (summary.processed > 0 || summary.regenerated > 0) {
+      console.log('\nArchives not rebuilt (test run or failures). Run with --archives when ready.')
     }
   } finally {
     await rm(workDir, { recursive: true, force: true })

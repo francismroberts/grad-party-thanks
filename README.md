@@ -142,6 +142,20 @@ the original and updates each row's width/height, keeping ids and paths:
 cd scripts && node ingest.js --gallery photobooth /Users/francis/Documents/Graduation/photobooth --regenerate
 ```
 
+**Archives.** Each gallery has two zips in `archives/`: `<gallery>-web.zip`
+(full WebP derivatives) and `<gallery>-originals.zip`, with friendly
+sequential filenames inside. A full ingest run that adds or regenerates
+photos rebuilds them; `--limit` runs don't. Rebuild on demand without
+touching photos:
+
+```bash
+cd scripts && node ingest.js --gallery photographer --archives
+```
+
+They are built from storage, streamed via `archiver` to a temp file and
+uploaded as a file-backed Blob, so the 1 GB originals zip never sits in
+memory. The pages read the archive sizes from the objects at load.
+
 **Photobooth crop.** The booth exports 1200×1800 print sheets with the
 same 2×6 strip twice side by side on kraft paper. The script crops
 photobooth files to the exact left half (600×1800) before doing anything
