@@ -253,7 +253,9 @@ function uploadOne(item) {
   return new Promise((resolve) => {
     const file = item.file
     const objectName = objectNameFor(file)
-    item.path = `${SUBMISSIONS_BUCKET}/${objectName}`
+    // Stored without the bucket prefix so it equals storage.objects.name
+    // and a join on file_path works.
+    item.path = objectName
     item.status = 'uploading'
     item.sent = 0
     updateItem(item, 0)

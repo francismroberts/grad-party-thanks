@@ -536,7 +536,9 @@ Behavior:
   that file only. The object name is remembered per file (localStorage)
   so a resumed upload keeps writing the object it started
 - Insert an `uploads` row per file on success: uploader_name, note,
-  file_path, mime_type, size_bytes
+  file_path, mime_type, size_bytes. `file_path` is the object key
+  without the bucket prefix (`<uuid>-<filename>`), so it equals
+  `storage.objects.name` and a join on it works
 - `beforeunload` warning while anything is in flight
 - Confirmation in the voice of the RSVP site's "You're in." ("They're
   in." / "Got it. Thank you.")
