@@ -127,6 +127,10 @@ Both galleries sit in `max-width:1600px; margin:0 auto;`.
 - `loading="lazy"` on every thumbnail
 - `srcset` at 1x/2x
 - Always set `width`/`height` from the DB so tiles reserve space
+- Alt text floor: position and chapter — `Photo 43 of 294 — Party and
+  Portraits`, `Photo 12 of 70 — photo booth strip` — on tiles and in the
+  lightbox. Real descriptions can replace it later; this makes the
+  gallery navigable instead of silent.
 
 ### Test at these widths
 
@@ -178,19 +182,29 @@ case on a phone.
 
 A **Select** toggle in the gallery header turns on selection mode:
 
-- Each tile gets a checkbox; tapping a tile selects rather than opens
-- Sticky action bar shows `N selected` plus **Download** and **Clear**
-- **Select all on this page** selects the loaded batch
-- Download fetches each selected `full` image, zips client-side with
-  JSZip, and saves one file
-
-**Cap selection at 40 photos.** Zipping happens in browser memory —
-40 × ~300 KB is ~12 MB and safe, but a few hundred will crash a phone
-tab. Past the cap, disable Download and surface: *"That's a lot —
-grab the whole gallery instead"* linking to Tier 3.
-
-Show progress while zipping; it's not instant and silence reads as
-broken.
+- Each tile gets a checkbox overlay (works in both layouts); tapping a
+  tile selects rather than opens
+- Action bar (takes the pill's place) shows `N selected · 67 MB` live,
+  plus **Select all shown**, **Clear**, **Download**
+- **Select all shown** means loaded tiles. `photos` is sparse (blocks
+  load in any order), so selection only walks tiles that exist, never a
+  raw index range: a selection with an unloaded index would zip with
+  files missing
+- Sizes come from HEAD requests on the originals, cached per photo
+- Download zips the **original JPGs** (friendly filenames, capture time
+  as the file date) with client-zip, **streamed to disk, never buffered
+  in memory**. iOS Safari has an undocumented memory ceiling that kills
+  the tab with no catchable exception, so buffering is the thing to
+  avoid. Three savers, best first: File System Access picker (Chromium)
+  → origin-private file system via a worker + sync access handle, then
+  the finished file goes to a download link (Safari, iOS, Firefox) →
+  in-memory Blob capped at 150 MB (last resort only). StreamSaver was
+  rejected: it silently buffers on Safari.
+- Cap 2 GB streamed. Past it, Download is disabled with *"That's a lot —
+  grab the whole gallery instead"*
+- Progress while zipping (`Zipping… 34 MB of 150 MB` + bar) and a
+  Cancel that tears the pipeline down and removes the temp file.
+  Silence reads as broken.
 
 ### Tier 3 — download everything
 

@@ -28,8 +28,13 @@
 // ============================================================
 
 import { SUPABASE_URL, SUPABASE_KEY, GALLERY_BUCKET } from './supabase-config.js'
+import { downloadZip, predictLength } from './vendor/client-zip.js'
 
 const BLOCK = 40
+const ZIP_CAP = 2 * 1024 ** 3          // streamed zips: generous ceiling
+const BLOB_CAP = 150 * 1024 ** 2       // buffered fallback only: keep well under mobile memory limits
+const LOCAL = ['localhost', '127.0.0.1'].includes(location.hostname)
+const params = new URLSearchParams(location.search)
 const SLUG = { photobooth: 'booth', photographer: 'photos' }
 const LOOKAHEAD = 900 // px below the viewport that counts as "about to be seen"
 
@@ -230,7 +235,7 @@ function loadBlock(b) {
     const from = b * BLOCK
     const to = from + BLOCK - 1
     const q = new URLSearchParams({
-      select: 'id,thumb_path,full_path,original_path,width,height,sort_order',
+      select: 'id,thumb_path,full_path,original_path,width,height,sort_order,taken_at',
       gallery: `eq.${gallery}`,
       order: 'sort_order.asc',
     })
@@ -263,12 +268,21 @@ function loadBlock(b) {
 }
 
 // ---------- tiles ----------
+// Alt text floor: position and chapter, so the gallery is navigable
+// rather than silent. Real descriptions can replace this later.
+function altFor(p, index) {
+  const where = chapters
+    ? chapters[chapterByIndex[index] ?? chapters.length - 1].title
+    : 'photo booth strip'
+  return `Photo ${p.sort_order + 1} of ${total ?? '…'} — ${where}`
+}
+
 function makeTile(p, index) {
   const b = document.createElement('button')
   b.type = 'button'
   b.className = 'tile'
   b.dataset.index = index
-  b.setAttribute('aria-label', `Open photo ${p.sort_order + 1}`)
+  if (selecting) b.setAttribute('aria-pressed', String(selected.has(index)))
 
   const img = document.createElement('img')
   img.src = url(p.thumb_path)
@@ -277,8 +291,14 @@ function makeTile(p, index) {
   img.height = p.height
   img.loading = 'lazy'
   img.decoding = 'async'
-  img.alt = ''
+  img.alt = altFor(p, index)
   b.appendChild(img)
+
+  const check = document.createElement('span')
+  check.className = 'check'
+  check.setAttribute('aria-hidden', 'true')
+  check.innerHTML = '<svg viewBox="0 0 14 14"><path d="M2.5 7.5l3 3 6-6.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  b.appendChild(check)
   return b
 }
 
@@ -528,8 +548,13 @@ function jumpFromHash() {
 host.addEventListener('click', (e) => {
   const tile = e.target.closest('.tile')
   if (!tile) return
+  const index = Number(tile.dataset.index)
+  if (selecting) {
+    toggleSelect(index, tile)
+    return
+  }
   openedFrom = tile
-  open(Number(tile.dataset.index))
+  open(index)
 })
 
 // ---------- lightbox ----------
@@ -551,7 +576,7 @@ async function show(i) {
   lbImg.src = url(p.full_path)
   lbImg.width = p.width
   lbImg.height = p.height
-  lbImg.alt = `Photo ${p.sort_order + 1}`
+  lbImg.alt = altFor(p, i)
 
   lbCounter.textContent = `${p.sort_order + 1} / ${total ?? '…'}`
 
@@ -609,6 +634,362 @@ lb.addEventListener('close', () => {
   openedFrom = null
 })
 
+// ---------- select mode ----------
+// `photos` is sparse (blocks load in any order), so selection only ever
+// walks tiles that exist in the DOM or indexes that are in `selected`;
+// never a raw index range. "Select all shown" means loaded tiles.
+const selToggle = document.getElementById('sel-toggle')
+const selbar = document.getElementById('selbar')
+const selCount = document.getElementById('sel-count')
+const selAll = document.getElementById('sel-all')
+const selClear = document.getElementById('sel-clear')
+const selCancel = document.getElementById('sel-cancel')
+const selDownload = document.getElementById('sel-download')
+const selTrack = document.getElementById('sel-track')
+const selFill = document.getElementById('sel-fill')
+const selNote = document.getElementById('sel-note')
+
+let selecting = false
+const selected = new Set()      // photo indexes
+const sizes = new Map()         // index → bytes of the original (from a HEAD request)
+let zipping = null              // AbortController while a zip is in progress
+
+function fmtBytes(b) {
+  if (b >= 1000 * 1024 ** 2) return `${(b / 1024 ** 3).toFixed(1)} GB`
+  return `${Math.max(1, Math.round(b / 1024 ** 2))} MB`
+}
+
+function setSelecting(on) {
+  if (!selToggle) return
+  selecting = on
+  body.classList.toggle('selecting', on)
+  selToggle.setAttribute('aria-pressed', String(on))
+  selToggle.textContent = on ? 'Done' : 'Select'
+  selbar.hidden = !on
+  host.querySelectorAll('.tile').forEach((t) => {
+    if (on) t.setAttribute('aria-pressed', String(selected.has(Number(t.dataset.index))))
+    else t.removeAttribute('aria-pressed')
+  })
+  if (!on) {
+    selected.clear()
+    zipping?.abort()
+  }
+  updateSelbar()
+}
+
+function toggleSelect(index, tile) {
+  if (zipping) return
+  if (noteKind === 'error') note(null)
+  if (selected.has(index)) selected.delete(index)
+  else {
+    selected.add(index)
+    ensureSize(index)
+  }
+  tile.setAttribute('aria-pressed', String(selected.has(index)))
+  updateSelbar()
+}
+
+function selectAllShown() {
+  if (zipping) return
+  host.querySelectorAll('.tile').forEach((t) => {
+    const i = Number(t.dataset.index)
+    if (!photos[i]) return
+    selected.add(i)
+    t.setAttribute('aria-pressed', 'true')
+    ensureSize(i)
+  })
+  updateSelbar()
+}
+
+function clearSelection() {
+  if (zipping) return
+  selected.clear()
+  host.querySelectorAll('.tile[aria-pressed="true"]').forEach((t) => t.setAttribute('aria-pressed', 'false'))
+  updateSelbar()
+}
+
+// Sizes come from HEAD requests against the originals (Content-Length is
+// a CORS-safelisted response header). Cached; a few in flight at once.
+const sizeQueue = []
+let sizeActive = 0
+function ensureSize(index) {
+  if (sizes.has(index)) return Promise.resolve(sizes.get(index))
+  const p = photos[index]
+  if (!p) return Promise.resolve(null)
+  if (p._sizeP) return p._sizeP
+  p._sizeP = new Promise((resolve) => {
+    sizeQueue.push({ index, path: p.original_path || p.full_path, resolve })
+    pumpSizes()
+  })
+  return p._sizeP
+}
+function pumpSizes() {
+  while (sizeActive < 6 && sizeQueue.length) {
+    const job = sizeQueue.shift()
+    sizeActive++
+    fetch(url(job.path), { method: 'HEAD' })
+      .then((r) => (r.ok ? Number(r.headers.get('content-length')) || null : null))
+      .catch(() => null)
+      .then((n) => {
+        if (n) sizes.set(job.index, n)
+        job.resolve(n)
+        sizeActive--
+        updateSelbar()
+        pumpSizes()
+      })
+  }
+}
+
+function selectionBytes() {
+  let bytes = 0
+  let pending = 0
+  for (const i of selected) {
+    const n = sizes.get(i)
+    if (n) bytes += n
+    else pending++
+  }
+  return { bytes, pending }
+}
+
+function updateSelbar() {
+  if (!selbar || zipping) return
+  const n = selected.size
+  const { bytes, pending } = selectionBytes()
+  let text = `${n} selected`
+  if (n) text += ` · ${fmtBytes(bytes)}${pending ? '…' : ''}`
+  selCount.textContent = text
+  const over = bytes > ZIP_CAP
+  selDownload.disabled = n === 0 || over
+  if (over) {
+    note(`That's a lot — ${fmtBytes(bytes)}. Grab the whole gallery instead, or pick fewer.`, 'cap')
+  } else if (noteKind === 'cap') {
+    note(null)
+  }
+}
+
+// One note line under the bar. 'cap' notes come and go with the
+// selection size; 'error' notes stay until the next selection change.
+let noteKind = null
+function note(text, kind = null) {
+  if (!selNote) return
+  noteKind = text ? kind : null
+  selNote.hidden = !text
+  selNote.textContent = text || ''
+}
+
+function progress(done, totalBytes) {
+  selTrack.hidden = false
+  totalBytes = Number(totalBytes) || 0
+  const pct = totalBytes ? Math.min(100, (100 * done) / totalBytes) : 0
+  selFill.style.width = `${pct.toFixed(1)}%`
+  selCount.textContent = totalBytes
+    ? `Zipping… ${fmtBytes(done)} of ${fmtBytes(totalBytes)}`
+    : `Zipping… ${fmtBytes(done)}`
+}
+
+// ---------- saving a streamed zip ----------
+// Three ways to get a zip onto disk, best first:
+//   picker  File System Access API (Chromium): stream straight into the
+//           file the person chose.
+//   opfs    Origin-private file system via a worker + sync access handle
+//           (Safari 15.2+, iOS 15.2+, Firefox 111+, Chromium): stream to
+//           a temp file on disk, then hand the finished File to a
+//           download link. No in-memory Blob at any point.
+//   blob    Buffer in memory. Last resort, capped at BLOB_CAP.
+function pickSaver() {
+  const forced = LOCAL && params.get('zipvia')
+  if (forced) return forced
+  if (typeof window.showSaveFilePicker === 'function') return 'picker'
+  if (navigator.storage && typeof navigator.storage.getDirectory === 'function' && typeof Worker === 'function') return 'opfs'
+  return 'blob'
+}
+
+function opfsSink(tempName) {
+  const worker = new Worker('/assets/zip-writer.worker.js')
+  let waiting = null
+  let failed = null
+  const ask = (msg) => new Promise((resolve, reject) => {
+    if (failed) return reject(failed)
+    waiting = { resolve, reject }
+    worker.postMessage(msg)
+  })
+  worker.onmessage = (e) => {
+    const m = e.data
+    if (m.type === 'error') {
+      failed = new Error(`zip writer: ${m.message}`)
+      waiting?.reject(failed)
+      waiting = null
+      return
+    }
+    waiting?.resolve(m)
+    waiting = null
+  }
+  worker.onerror = (e) => {
+    failed = new Error(`zip writer: ${e.message || 'worker failed'}`)
+    waiting?.reject(failed)
+    waiting = null
+  }
+  return {
+    open: () => ask({ type: 'open', name: tempName }),
+    writable: new WritableStream({
+      write: (chunk) => ask({ type: 'chunk', chunk }),
+      close: () => ask({ type: 'close' }).then(() => worker.terminate()),
+      abort: () => ask({ type: 'abort' }).catch(() => {}).then(() => worker.terminate()),
+    }),
+  }
+}
+
+function triggerDownload(fileOrBlob, name) {
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(fileOrBlob)
+  a.download = name
+  a.rel = 'noopener'
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(a.href), 10 * 60 * 1000)
+}
+
+async function downloadSelected() {
+  if (zipping) return
+  const idx = [...selected].filter((i) => photos[i]).sort((a, b) => a - b)
+  if (!idx.length) return
+
+  zipping = new AbortController()
+  const { signal } = zipping
+  let writable = null
+  selDownload.disabled = true
+  selAll.disabled = selClear.disabled = true
+  selCancel.hidden = false
+  note(null)
+  selCount.textContent = 'Preparing…'
+
+  try {
+    await Promise.all(idx.map(ensureSize))
+    const metas = idx.map((i) => {
+      const p = photos[i]
+      const path = p.original_path || p.full_path
+      return { i, path, name: friendlyName(p, extOf(path)), size: sizes.get(i) || 0 }
+    })
+    const bytes = metas.reduce((a, m) => a + m.size, 0)
+    if (bytes > ZIP_CAP) throw new Error('over the size cap')
+    const saver = pickSaver()
+    if (saver === 'blob' && bytes > BLOB_CAP) {
+      note(`This browser can't stream a zip that big (${fmtBytes(bytes)}). Pick fewer photos, or use a computer.`)
+      return
+    }
+    const zipName = `francis-grad-party-${slug}-${idx.length}-photo${idx.length === 1 ? '' : 's'}.zip`
+    // predictLength returns a BigInt (zip64-capable); keep a Number copy
+    // for the progress arithmetic.
+    const length = metas.every((m) => m.size) ? predictLength(metas.map((m) => ({ name: m.name, size: m.size }))) : undefined
+    const expected = length === undefined ? bytes : Number(length)
+
+    // Open the destination first, so a cancelled picker costs nothing.
+    let sink = null
+    let tempName = null
+    if (saver === 'picker') {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: zipName,
+        types: [{ description: 'Zip archive', accept: { 'application/zip': ['.zip'] } }],
+      })
+      writable = await handle.createWritable()
+    } else if (saver === 'opfs') {
+      tempName = `zip-${Date.now()}.zip`
+      sink = opfsSink(tempName)
+      try {
+        await sink.open()
+        writable = sink.writable
+      } catch (err) {
+        console.warn('OPFS unavailable, buffering instead:', err)
+        if (bytes > BLOB_CAP) {
+          note(`This browser can't stream a zip that big (${fmtBytes(bytes)}). Pick fewer photos, or use a computer.`)
+          return
+        }
+        sink = null
+      }
+    }
+
+    // Originals are fetched one at a time and streamed straight into the
+    // zip; nothing is held beyond the chunk in flight.
+    const files = (async function* () {
+      for (const m of metas) {
+        let res
+        try {
+          res = await fetch(url(m.path), { signal })
+        } catch (err) {
+          if (signal.aborted) return // cancelled: end quietly, the pipe is already torn down
+          throw err
+        }
+        if (!res.ok) throw new Error(`HTTP ${res.status} fetching ${m.name}`)
+        const p = photos[m.i]
+        yield { name: m.name, lastModified: p.taken_at ? new Date(p.taken_at) : new Date(), input: res }
+      }
+    })()
+
+    let done = 0
+    progress(0, expected)
+    const zip = downloadZip(files, length !== undefined ? { length } : undefined)
+    const counted = zip.body.pipeThrough(new TransformStream({
+      transform(chunk, ctrl) {
+        done += chunk.byteLength
+        progress(done, expected)
+        ctrl.enqueue(chunk)
+      },
+    }))
+
+    if (writable) {
+      // pipeTo aborts the destination itself on error or cancel
+      await counted.pipeTo(writable, { signal })
+      writable = null
+      if (sink) {
+        const root = await navigator.storage.getDirectory()
+        const fh = await root.getFileHandle(tempName)
+        triggerDownload(await fh.getFile(), zipName)
+      }
+    } else {
+      const blob = await new Response(counted).blob()
+      if (signal.aborted) return
+      triggerDownload(blob, zipName)
+    }
+    selCount.textContent = `Done · ${fmtBytes(done)}`
+    await new Promise((r) => setTimeout(r, 1800))
+  } catch (err) {
+    if (err && (err.name === 'AbortError' || signal.aborted)) {
+      // cancelled: fall through to reset
+    } else {
+      console.error(err)
+      note(`Couldn't build the zip: ${err.message}. Try again, or grab fewer photos.`, 'error')
+    }
+  } finally {
+    // a destination that was opened but never fully piped is abandoned
+    // (removes the OPFS temp file, closes the picker's file)
+    if (writable) writable.abort().catch(() => {})
+    zipping = null
+    selCancel.hidden = true
+    selTrack.hidden = true
+    selFill.style.width = '0%'
+    selAll.disabled = selClear.disabled = false
+    updateSelbar()
+  }
+}
+
+if (selToggle) {
+  selToggle.addEventListener('click', () => setSelecting(!selecting))
+  selAll.addEventListener('click', selectAllShown)
+  selClear.addEventListener('click', clearSelection)
+  selDownload.addEventListener('click', downloadSelected)
+  selCancel.addEventListener('click', () => zipping?.abort())
+  // Cancelling tears down a fetch → zip → sink pipeline; the zip library
+  // has an internal promise that rejects with the abort reason after
+  // we've already handled it. That one is expected noise, nothing else is.
+  window.addEventListener('unhandledrejection', (e) => {
+    if (zipping?.signal.aborted && e.reason && e.reason.name === 'AbortError') e.preventDefault()
+  })
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && selecting && !lb.open && !(sheet && sheet.open)) setSelecting(false)
+  })
+}
+
 // ---------- go ----------
 setStatus('Loading…')
 loadChapters()
@@ -631,4 +1012,16 @@ loadChapters()
       loadBlock(0).finally(() => sentinelObserver.observe(sentinel))
     }
     updatePill()
+
+    // Local-only self-test: ?selftest-zip=N selects the first N loaded
+    // photos and starts the download, so the save path can be exercised
+    // in browsers that can't be driven by hand here (Safari).
+    const n = LOCAL && Number(params.get('selftest-zip'))
+    if (n > 0) {
+      loadBlock(0).then(() => {
+        setSelecting(true)
+        host.querySelectorAll('.tile').forEach((t, k) => { if (k < n) toggleSelect(Number(t.dataset.index), t) })
+        return downloadSelected()
+      })
+    }
   })

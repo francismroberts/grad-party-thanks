@@ -51,7 +51,8 @@
     <div class="ghead">
       <p class="meta" id="count">&nbsp;</p>
       <div class="actions">
-        <!-- stage 5: Select toggle · stage 6: Download all / originals -->
+        <button type="button" class="tbtn" id="sel-toggle" aria-pressed="false">Select</button>
+        <!-- stage 6: Download all / originals -->
       </div>
     </div>
 
@@ -95,6 +96,20 @@
     <a class="tbtn" id="lb-dl" href="#" download>Download</a>
   </div>
 </dialog>
+
+<!-- Select mode bar: count + running size, select all shown, clear,
+     download (zips the original JPGs, streamed to disk). -->
+<div class="selbar" id="selbar" hidden role="region" aria-label="Selection">
+  <p class="selcount" id="sel-count" aria-live="polite">0 selected</p>
+  <div class="selacts">
+    <button type="button" class="tbtn" id="sel-all">Select all shown</button>
+    <button type="button" class="tbtn" id="sel-clear">Clear</button>
+    <button type="button" class="tbtn" id="sel-cancel" hidden>Cancel</button>
+    <button type="button" class="btn" id="sel-download" disabled>Download</button>
+  </div>
+  <div class="track" id="sel-track" hidden aria-hidden="true"><i id="sel-fill"></i></div>
+  <p class="selnote" id="sel-note" hidden></p>
+</div>
 
 <!-- Floating pill: current chapter (opens the chapter sheet) · back to top.
      Hidden until the person has scrolled into the photos. -->

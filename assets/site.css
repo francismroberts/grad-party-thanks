@@ -82,9 +82,37 @@ a:hover{text-decoration-color:var(--lavender);}
 @media (min-width:1024px){.grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:14px;}}
 @media (min-width:1440px){.grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:16px;}}
 
-.tile{display:block;width:100%;min-height:44px;padding:0;margin:0;border:1px solid var(--line);background:#fff;cursor:pointer;line-height:0;text-align:left;-webkit-tap-highlight-color:transparent;}
+.tile{position:relative;display:block;width:100%;min-height:44px;padding:0;margin:0;border:1px solid var(--line);background:#fff;cursor:pointer;line-height:0;text-align:left;-webkit-tap-highlight-color:transparent;}
 .tile img{display:block;width:100%;height:auto;background:var(--line-soft);}
 .tile:focus-visible{outline:2px solid var(--lavender);outline-offset:2px;}
+
+/* ---------- select mode ----------
+   Checkbox overlays the tile (works in both layouts; the tile itself is
+   the tap target). Selected tiles get a lavender inset ring. */
+.tile .check{position:absolute;top:8px;left:8px;width:26px;height:26px;border-radius:50%;border:2px solid #fff;background:rgba(40,32,38,.5);box-shadow:0 1px 4px rgba(0,0,0,.35);display:none;align-items:center;justify-content:center;color:#fff;pointer-events:none;}
+.tile .check svg{width:14px;height:14px;opacity:0;}
+.selecting .tile .check{display:flex;}
+.tile[aria-pressed="true"] .check{background:var(--lavender);}
+.tile[aria-pressed="true"] .check svg{opacity:1;}
+.tile[aria-pressed="true"]{outline:3px solid var(--lavender);outline-offset:-3px;}
+.tile[aria-pressed="true"] img{opacity:.88;}
+.ghead .tbtn[aria-pressed="true"]{color:var(--lavender);}
+.selecting .pill{display:none;}
+body.selecting main{padding-bottom:calc(clamp(48px,8vw,80px) + 150px);}
+
+.selbar{position:fixed;left:50%;bottom:max(12px,env(safe-area-inset-bottom));transform:translateX(-50%);z-index:41;width:min(760px,calc(100vw - 24px));
+  background:rgba(251,247,249,.96);-webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:18px;
+  box-shadow:0 12px 34px -18px rgba(31,24,96,.5);padding:8px 10px 8px 18px;display:flex;align-items:center;gap:6px 8px;flex-wrap:wrap;color:var(--ink);}
+.selbar[hidden]{display:none;}
+.selbar .selcount{font-family:var(--sans);font-size:12px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;margin:0;flex:1 1 auto;min-width:0;min-height:44px;display:inline-flex;align-items:center;white-space:nowrap;}
+.selbar .selacts{display:flex;align-items:center;gap:2px;margin-left:auto;flex-wrap:wrap;}
+.selbar .btn{width:auto;padding:12px 18px;min-height:44px;}
+.selbar .track{flex-basis:100%;height:3px;background:var(--line-soft);border-radius:2px;overflow:hidden;margin:2px 0 4px;}
+.selbar .track[hidden]{display:none;}
+.selbar .track i{display:block;height:100%;width:0;background:var(--lavender);transition:width .15s linear;}
+.selbar .selnote{flex-basis:100%;margin:0 0 4px;font-family:var(--serif);font-style:italic;font-size:14px;line-height:1.45;color:var(--ink-soft);}
+.selbar .selnote[hidden]{display:none;}
+@media (prefers-reduced-motion:reduce){.selbar .track i{transition:none;}}
 
 /* ---------- chapters ----------
    Sections inside .wide, each with its own grid. Heading: tracked

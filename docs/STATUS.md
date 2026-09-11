@@ -1,4 +1,4 @@
-# Status — updated 2026-09-11 05:22 PT
+# Status — updated 2026-09-11 05:47 PT
 
 ## Built this session
 - Repo scaffold, `CLAUDE.md`, `scripts/ingest.js` (stage 2), `scripts/serve.mjs` (local preview; system Python can't read ~/Documents).
@@ -7,6 +7,7 @@
 - **Stage 3: `booth.html`** with `assets/site.css` (RSVP tokens verbatim) and `assets/gallery.js` (shared loader + lightbox). Tested at 390/768/1440/1920: 2/3/5 columns, no overflow, 40-then-scroll paging, lightbox with keys/swipe/Esc/close, focus return, `?download=` links confirmed to return `Content-Disposition: attachment`.
 - **Chapters on `photos.html`:** seven sections by `taken_at` (UTC, to the second), defined as JSON in the page; headings + counts derived from one small capture-time fetch and rendered before any photo. Verified 35/33/102/30/26/49/19 = 294. Spec updated to match everything built so far.
 - **Chapter pill + on-demand loading.** Floating pill near the bottom centre (replaced the earlier horizontal jump-link row): left zone names the chapter in view, updates live, opens a sheet of all chapters with counts and the current one in lavender; right zone is back-to-top. Hidden until scrolled into the photos; Escape/backdrop/close/selection all close the sheet. Booth has the up-arrow-only pill. Loading is by block of 40 at any index: a jump loads its own chapter's blocks first and scrolls there; other sections fill in when scrolled into view. Growth above the viewport is compensated by hand (`overflow-anchor:none`). `#chapter-N` deep links work on load. Booth keeps the sentinel path, verified 40 then 70.
+- **Stage 5: select mode + streamed zip.** Select toggle in both headers, checkbox overlay on tiles (both layouts), bar with live `N selected · 67 MB` (sizes via HEAD on originals, cached), Select all shown = loaded tiles only (sparse `photos` respected), Clear, Cancel, progress bar. Zips **original JPGs** with vendored client-zip 2.5.0, streamed to disk: picker (Chromium) → OPFS via `zip-writer.worker.js` sync access handle → File to a download link (Safari/iOS/Firefox) → Blob capped 150 MB (last resort). 2 GB cap. **Verified in desktop Safari**: 17.9 MB zip of 3 originals saved to ~/Downloads, `unzip -t` clean. Also verified OPFS path in the pane browser (valid zip on disk, cancel removes it) and the blob path on booth. Alt text floor on tiles + lightbox: `Photo 43 of 294 — Party and Portraits` / `Photo 12 of 70 — photo booth strip`.
 - **Stage 4: `photos.html`** with justified rows (`class="grid justified"`), in the shared module. Packs rows to a target height (180 mobile / 260 desktop), scales each to fill the width exactly, tiles absolutely positioned. Verified at 1440: 294 photos, 66 rows, every row edge exactly on the container width, no overlaps, row heights 228–302. Re-lays out on resize.
 
 ## Decisions that differ from the spec
@@ -16,11 +17,13 @@
 - Gallery pages use plain `fetch` to PostgREST, not supabase-js: one table read, no bundle. Download filenames carry the gallery slug (`francis-grad-party-booth-001.jpg`) so the two galleries never collide.
 - Lightbox has one **Download** button serving the original JPG, not the spec's web-size + "Original" pair. WebP is a delivery format; guests want a JPG that opens anywhere. Lives in shared `gallery.js`, so `photos.html` inherits it.
 - Photographer set is 294 files / 1.0 GB, not ~300 / 1.1 GB. Use measured archive sizes in the UI.
+- Tier 2 zips originals, not web-size, and streams to disk instead of the spec's in-memory JSZip with a 40-photo cap. StreamSaver rejected: its source buffers on Safari. iOS not tested on a device; the OPFS path is the one iOS would use.
 
 ## Broken or unfinished
 - Referenced but not in repo: `favicon.ico`, `favicon-32.png`, `favicon-16.png`, `apple-touch-icon.png` (copy from RSVP site) and `og-image.jpg` (JPEG < 200 KB). Stage 9.
-- Both gallery headers have an empty `.actions` slot for Select (stage 5) and Download all (stage 6). Archives don't exist yet.
+- Download all (stage 6) not built; the over-cap note says "grab the whole gallery instead" with nowhere to go yet. Archives don't exist yet.
+- Local-only test hooks in `gallery.js` (`?zipvia=`, `?selftest-zip=`) are gated on hostname; harmless in production.
 
 ## Next session should start with
-1. Stage 5: Select mode + JSZip in `gallery.js`, 40-photo cap. Selection must work in both layouts; in justified mode the checkbox overlays the absolutely positioned tile. Note `photos` is now a sparse array (blocks load out of order); "select all on this page" should mean loaded tiles.
-2. Stage 6: archive generation in `ingest.js` + "Download all" with measured sizes.
+1. Stage 6: archive generation in `ingest.js` (web + originals per gallery, friendly sequential filenames) + "Download all · N MB" / "Download originals · N GB" in the `.actions` slot with measured sizes. Link the over-cap note to it.
+2. Test the zip on a real iPhone (OPFS path): pick 5 photos, confirm the zip lands in Files.

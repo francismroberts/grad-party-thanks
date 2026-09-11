@@ -32,6 +32,8 @@ embedded as base64.
 ├── assets/
 │   ├── supabase-config.js    Project URL, publishable key, bucket names. Safe to commit.
 │   ├── site.css              Shared tokens and components, copied from the RSVP site
+│   ├── zip-writer.worker.js  Streams a zip into the origin-private file system (disk, not RAM)
+│   ├── vendor/client-zip.js  client-zip 2.5.0 (MIT), vendored so nothing loads from a CDN
 │   └── gallery.js            Gallery loader + lightbox, shared by booth.html and photos.html.
 │                             Two layouts: CSS grid (booth, uniform strips) and justified
 │                             rows (photos, mixed aspect ratios; class="grid justified").
@@ -158,12 +160,19 @@ Archive generation is a later stage and is not part of the script yet.
 
 The gallery pages talk to Supabase with plain `fetch`: they read one
 table and build public URLs, which does not justify the supabase-js
-bundle on a phone. Pages that need more load it from a CDN, so nothing
-here is in `package.json`:
+bundle on a phone. The select-multiple download uses `client-zip`,
+vendored in `assets/vendor/`, streaming the zip to disk (see the spec's
+Tier 2 for the three save paths and why StreamSaver was rejected).
+Pages that need more will load it from a CDN, so nothing here is in
+`package.json`:
 
 - `tus-js-client` for resumable uploads on `upload.html`
-- `JSZip` for the select-multiple download (capped at 40 photos)
 - `@supabase/supabase-js` on `upload.html` for the `uploads` row insert
+
+Two local-only query flags help test the download without a save dialog
+(they do nothing off localhost): `?zipvia=opfs|blob|picker` forces a
+save path, `?selftest-zip=N` selects the first N loaded photos and
+starts the download on load.
 
 ## Deploy
 
