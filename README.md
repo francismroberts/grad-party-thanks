@@ -32,7 +32,9 @@ embedded as base64.
 ├── assets/
 │   ├── supabase-config.js    Project URL, publishable key, bucket names. Safe to commit.
 │   ├── site.css              Shared tokens and components, copied from the RSVP site
-│   └── gallery.js            Gallery loader + lightbox, shared by booth.html and photos.html
+│   └── gallery.js            Gallery loader + lightbox, shared by booth.html and photos.html.
+│                             Two layouts: CSS grid (booth, uniform strips) and justified
+│                             rows (photos, mixed aspect ratios; class="grid justified")
 ├── docs/
 │   ├── thank-you-site-spec.md
 │   └── STATUS.md             Session handoff. Read this first.
@@ -54,8 +56,8 @@ Pages use ES modules, so they need an HTTP server, not `file://`:
 node scripts/serve.mjs
 ```
 
-Then open `http://127.0.0.1:8765/booth`. Like GitHub Pages, it resolves
-`/booth` to `booth.html`. The gallery pages read live data from
+Then open `http://127.0.0.1:8765/booth` or `/photos`. Like GitHub
+Pages, it resolves `/booth` to `booth.html`. The gallery pages read live data from
 Supabase, so what you see locally is what's deployed.
 
 Static assets the pages reference but the repo does not hold yet:

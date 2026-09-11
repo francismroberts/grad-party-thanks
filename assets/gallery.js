@@ -18,12 +18,19 @@ import { SUPABASE_URL, SUPABASE_KEY, GALLERY_BUCKET } from './supabase-config.js
 const PAGE = 40
 const SLUG = { photobooth: 'booth', photographer: 'photos' }
 
+// Justified-row layout. Rows are packed to hit a target height, then
+// each row is scaled so its tiles fill the width exactly. Rows with
+// portraits come out taller; nothing is cropped.
+const ROW_TARGET = { mobile: 180, desktop: 260 }   // px; mobile < 768
+const LAST_ROW_MAX_STRETCH = 1.35                    // a short final row keeps the target height past this
+
 const body = document.body
 const gallery = body.dataset.gallery
 const slug = SLUG[gallery] || gallery
 const publicBase = `${SUPABASE_URL}/storage/v1/object/public/${GALLERY_BUCKET}/`
 
 const grid = document.getElementById('grid')
+const justified = grid.classList.contains('justified')
 const status = document.getElementById('gstatus')
 const sentinel = document.getElementById('sentinel')
 const countEl = document.getElementById('count')
@@ -92,6 +99,7 @@ async function fetchPage() {
     const startIndex = photos.length
     photos.push(...rows)
     renderTiles(rows, startIndex)
+    if (justified) layoutJustified()
 
     if (total !== null && countEl) {
       countEl.textContent = `${total} photo${total === 1 ? '' : 's'}`
@@ -135,6 +143,71 @@ function renderTiles(rows, startIndex) {
     frag.appendChild(b)
   })
   grid.appendChild(frag)
+}
+
+// ---------- justified rows ----------
+// Same gutters as the CSS grid breakpoints.
+function gutter(vw) {
+  return vw < 480 ? 8 : vw < 768 ? 10 : vw < 1024 ? 12 : vw < 1440 ? 14 : 16
+}
+
+function layoutJustified() {
+  const W = grid.clientWidth
+  if (!W || !photos.length) return
+  const vw = window.innerWidth
+  const target = vw < 768 ? ROW_TARGET.mobile : ROW_TARGET.desktop
+  const gap = gutter(vw)
+  const tiles = grid.children
+
+  let y = 0
+  let row = []       // [{ el, ar }]
+  let rowAr = 0      // sum of aspect ratios in the row
+
+  const widthAt = (h, n, ar) => ar * h + gap * (n - 1)
+
+  const flush = (isLast) => {
+    const n = row.length
+    let h = (W - gap * (n - 1)) / rowAr
+    if (isLast && h > target * LAST_ROW_MAX_STRETCH) h = target
+    let x = 0
+    row.forEach(({ el, ar }, i) => {
+      // last tile takes the remainder so the row edge lands exactly on W
+      const w = i === n - 1 && !isLast ? W - x : ar * h
+      el.style.left = `${x.toFixed(2)}px`
+      el.style.top = `${y.toFixed(2)}px`
+      el.style.width = `${w.toFixed(2)}px`
+      el.style.height = `${h.toFixed(2)}px`
+      x += w + gap
+    })
+    y += h + gap
+    row = []
+    rowAr = 0
+  }
+
+  for (let i = 0; i < photos.length; i++) {
+    const ar = photos[i].width / photos[i].height
+    const withoutW = widthAt(target, row.length, rowAr)
+    const withW = widthAt(target, row.length + 1, rowAr + ar)
+    // If adding this photo overshoots the width, decide which is closer
+    // to the target: the row without it, or the row with it.
+    if (row.length && withW > W && W - withoutW < withW - W) {
+      flush(false)
+    }
+    row.push({ el: tiles[i], ar })
+    rowAr += ar
+    if (widthAt(target, row.length, rowAr) >= W) flush(false)
+  }
+  if (row.length) flush(true)
+
+  grid.style.height = `${Math.max(0, y - gap).toFixed(2)}px`
+}
+
+if (justified) {
+  let raf = 0
+  window.addEventListener('resize', () => {
+    cancelAnimationFrame(raf)
+    raf = requestAnimationFrame(layoutJustified)
+  })
 }
 
 grid.addEventListener('click', (e) => {

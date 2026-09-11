@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Photos — Thank You — Francis Grad Party</title>
+  <meta name="description" content="Every photo the photographer took at the party. Grab yours.">
+  <meta name="robots" content="noindex">
+  <meta name="theme-color" content="#F6EFF2">
+
+  <link rel="icon" href="/favicon.ico" sizes="any">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Francis Grad Party">
+  <meta property="og:title" content="Photos — Thank You — Francis Grad Party">
+  <meta property="og:description" content="Every photo the photographer took at the party. Grab yours.">
+  <meta property="og:url" content="https://thanks.francismroberts.com/photos">
+  <meta property="og:image" content="https://thanks.francismroberts.com/og-image.jpg">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:locale" content="en_US">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Photos — Thank You — Francis Grad Party">
+  <meta name="twitter:description" content="Every photo the photographer took at the party. Grab yours.">
+  <meta name="twitter:image" content="https://thanks.francismroberts.com/og-image.jpg">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/assets/site.css">
+</head>
+<body data-gallery="photographer">
+<main>
+
+  <section class="col">
+    <a class="back" href="/">← Thank you</a>
+    <p class="label">Photos</p>
+    <h1>Everything the camera caught.</h1>
+    <p class="lead">In order, from the first arrivals to the end of the night. If you're in one, it's yours.</p>
+  </section>
+
+  <section class="col tight">
+    <p class="note">On your phone? Long-press any photo to save it straight to your camera roll. Grabbing a lot? The zip works better on a computer.</p>
+  </section>
+
+  <section class="wide">
+    <div class="ghead">
+      <p class="meta" id="count">&nbsp;</p>
+      <div class="actions">
+        <!-- stage 5: Select toggle · stage 6: Download all / originals -->
+      </div>
+    </div>
+
+    <div class="grid justified" id="grid" aria-label="Photographer gallery"></div>
+    <div class="sentinel" id="sentinel" aria-hidden="true"></div>
+    <p class="gstatus" id="gstatus" role="status" aria-live="polite">Loading…</p>
+  </section>
+
+  <section class="col">
+    <a class="back" href="/">← Back to the thank-you note</a>
+  </section>
+
+</main>
+
+<dialog class="lb" id="lb" aria-label="Photo viewer">
+  <div class="bar">
+    <p class="meta" id="lb-counter"></p>
+    <button type="button" class="tbtn" id="lb-close" aria-label="Close">Close ✕</button>
+  </div>
+  <div class="stage">
+    <button type="button" class="nav prev" id="lb-prev" aria-label="Previous photo">‹</button>
+    <div class="frame">
+      <img id="lb-img" alt="">
+    </div>
+    <button type="button" class="nav next" id="lb-next" aria-label="Next photo">›</button>
+  </div>
+  <div class="foot">
+    <a class="tbtn" id="lb-dl" href="#" download>Download</a>
+  </div>
+</dialog>
+
+<script type="module" src="/assets/gallery.js"></script>
+</body>
+</html>

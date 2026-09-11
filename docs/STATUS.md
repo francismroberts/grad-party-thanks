@@ -1,10 +1,11 @@
-# Status — updated 2026-09-11 04:02 PT
+# Status — updated 2026-09-11 04:28 PT
 
 ## Built this session
 - Repo scaffold, `CLAUDE.md`, `scripts/ingest.js` (stage 2), `scripts/serve.mjs` (local preview; system Python can't read ~/Documents).
 - **Photobooth cropped to a single strip.** Source files are 1200×1800 print sheets: the same 2×6 strip twice on kraft paper. Measured: halves identical in content (diffs are sub-pixel resampling only), no white margin anywhere, strip frame is kraft and part of the design, banner wider than the photos. Crop = exact left half, 600×1800, configured in `CROP` in `ingest.js`; the original in storage is the cropped strip too. All 70 regenerated via new `--regenerate` flag, 0 failures, 280 objects, no orphans. Source sheets on disk untouched.
 - **Both galleries fully ingested, 0 failures.** Photobooth 70 rows (all 600×1800). Photographer 294 rows (178 landscape, 116 portrait, mostly 5760×3840 / 3840×5760, 16 odd crops). 364 rows total, no NULLs, `sort_order` contiguous and chronological, every original verified GPS-free with camera EXIF kept.
 - **Stage 3: `booth.html`** with `assets/site.css` (RSVP tokens verbatim) and `assets/gallery.js` (shared loader + lightbox). Tested at 390/768/1440/1920: 2/3/5 columns, no overflow, 40-then-scroll paging, lightbox with keys/swipe/Esc/close, focus return, `?download=` links confirmed to return `Content-Disposition: attachment`.
+- **Stage 4: `photos.html`** with justified rows (`class="grid justified"`), in the shared module. Packs rows to a target height (180 mobile / 260 desktop), scales each to fill the width exactly, tiles absolutely positioned. Verified at 1440: 294 photos, 66 rows, every row edge exactly on the container width, no overlaps, row heights 228–302. Re-lays out on resize.
 
 ## Decisions that differ from the spec
 - Photo `id` is a UUID from the source file's SHA-256, for idempotency. 2x thumb at `<gallery>/thumb/<id>@2x.webp`, derived from `thumb_path`. Originals keep real extension.
@@ -16,8 +17,8 @@
 
 ## Broken or unfinished
 - Referenced but not in repo: `favicon.ico`, `favicon-32.png`, `favicon-16.png`, `apple-touch-icon.png` (copy from RSVP site) and `og-image.jpg` (JPEG < 200 KB). Stage 9.
-- `booth.html` header has an empty `.actions` slot for Select (stage 5) and Download all (stage 6). Archives don't exist yet.
+- Both gallery headers have an empty `.actions` slot for Select (stage 5) and Download all (stage 6). Archives don't exist yet.
 
 ## Next session should start with
-1. Stage 4: `photos.html`. Copy `booth.html`, change `data-gallery="photographer"`, copy, and OG tags. `gallery.js` already handles mixed aspect ratios and 294 rows. Test scroll paging past 40/80/…/280.
-2. Stage 5: Select mode + JSZip in `gallery.js`, 40-photo cap.
+1. Stage 5: Select mode + JSZip in `gallery.js`, 40-photo cap. Selection must work in both layouts; in justified mode the checkbox overlays the absolutely positioned tile.
+2. Stage 6: archive generation in `ingest.js` + "Download all" with measured sizes.
