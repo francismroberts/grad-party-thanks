@@ -3,7 +3,8 @@
 //
 // Reads `photos` rows for the gallery named in <body data-gallery>,
 // renders tiles 40 at a time as the user scrolls, and drives the
-// lightbox. Talks to PostgREST with plain fetch: this page only reads
+// lightbox. The lightbox shows the `full` WebP and its single Download
+// button serves the original JPG with a friendly filename. Talks to PostgREST with plain fetch: this page only reads
 // one table and builds URLs, so the supabase-js bundle isn't worth
 // its weight here.
 //
@@ -33,7 +34,6 @@ const lbCounter = document.getElementById('lb-counter')
 const lbPrev = document.getElementById('lb-prev')
 const lbNext = document.getElementById('lb-next')
 const lbDl = document.getElementById('lb-dl')
-const lbDlOrig = document.getElementById('lb-dl-orig')
 const lbClose = document.getElementById('lb-close')
 
 const photos = []
@@ -175,13 +175,11 @@ async function show(i) {
   const totalLabel = total ?? photos.length
   lbCounter.textContent = `${p.sort_order + 1} / ${totalLabel}`
 
-  lbDl.href = downloadUrl(p.full_path, friendlyName(p, 'webp'))
-  if (p.original_path) {
-    lbDlOrig.href = downloadUrl(p.original_path, friendlyName(p, extOf(p.original_path)))
-    lbDlOrig.hidden = false
-  } else {
-    lbDlOrig.hidden = true
-  }
+  // One download button, and it serves the original JPG: guests saving
+  // a photo want a file that opens anywhere, not the WebP web derivative.
+  // The full WebP is only what the lightbox displays.
+  const dlPath = p.original_path || p.full_path
+  lbDl.href = downloadUrl(dlPath, friendlyName(p, extOf(dlPath)))
 
   lbPrev.disabled = i === 0
   lbNext.disabled = done && i >= photos.length - 1

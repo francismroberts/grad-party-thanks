@@ -1,4 +1,4 @@
-# Status — updated 2026-09-11 03:55 PT
+# Status — updated 2026-09-11 04:02 PT
 
 ## Built this session
 - Repo scaffold, `CLAUDE.md`, `scripts/ingest.js` (stage 2), `scripts/serve.mjs` (local preview; system Python can't read ~/Documents).
@@ -11,6 +11,7 @@
 - Live `photos` table has `original_path` (not in spec SQL); the script writes it. Capture time falls back EXIF → filename `YYYYMMDD_HHMMSS` → mtime. Existing rows self-heal on re-run; `--limit 0` runs only that pass; `--regenerate` rebuilds and re-uploads everything for existing rows.
 - Admin key is the modern `sb_secret_` key. Node 26 needs Buffers, not paths, into sharp/exifr; `engines` pinned `>=20 <27`.
 - Gallery pages use plain `fetch` to PostgREST, not supabase-js: one table read, no bundle. Download filenames carry the gallery slug (`francis-grad-party-booth-001.jpg`) so the two galleries never collide.
+- Lightbox has one **Download** button serving the original JPG, not the spec's web-size + "Original" pair. WebP is a delivery format; guests want a JPG that opens anywhere. Lives in shared `gallery.js`, so `photos.html` inherits it.
 - Photographer set is 294 files / 1.0 GB, not ~300 / 1.1 GB. Use measured archive sizes in the UI.
 
 ## Broken or unfinished
