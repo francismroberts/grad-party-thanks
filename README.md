@@ -122,6 +122,23 @@ source file, so files already in the `photos` table are skipped and
 never modified; GPS is stripped from a temp copy and verified gone
 before anything uploads.
 
+After changing the pipeline (crop, sizes, quality), rebuild what is
+already uploaded with `--regenerate`. It re-uploads every derivative and
+the original and updates each row's width/height, keeping ids and paths:
+
+```bash
+cd scripts && node ingest.js --gallery photobooth /Users/francis/Documents/Graduation/photobooth --regenerate
+```
+
+**Photobooth crop.** The booth exports 1200×1800 print sheets with the
+same 2×6 strip twice side by side on kraft paper. The script crops
+photobooth files to the exact left half (600×1800) before doing anything
+else, so the original, the derivatives and the stored dimensions all
+describe a single strip. The crop is configured per gallery in `CROP` at
+the top of `ingest.js` and refuses any file that is not 1200×1800.
+Storage keeps only the cropped version; the source sheets on disk are
+untouched.
+
 Objects written per photo, in the `gallery` bucket:
 
 | Path | Size | Notes |

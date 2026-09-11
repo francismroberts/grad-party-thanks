@@ -64,6 +64,20 @@ const DERIVATIVES = [
   { key: 'full', edge: 2000, quality: 82, suffix: '' },
 ]
 
+// ---------- per-gallery crop ----------
+// The photobooth export is a 4×6 print sheet at 300 dpi (1200×1800): the
+// same 2×6 strip twice, side by side, on kraft-tan paper. Measured on
+// 2026-09-11: the two halves carry identical content (differences are
+// sub-pixel resampling only), the strip's kraft frame is part of its
+// design, and the banner is wider than the photos — so the crop is the
+// exact left half, nothing trimmed inside it. The crop is applied after
+// the GPS strip and before everything else, so the original, the
+// derivatives and the stored width/height all describe the cropped image.
+// `expect` guards against cropping a file that isn't that sheet.
+const CROP = {
+  photobooth: { expect: { width: 1200, height: 1800 }, left: 0, top: 0, width: 600, height: 1800 },
+}
+
 const INPUT_EXT = new Set(['.jpg', '.jpeg', '.png', '.webp', '.tif', '.tiff'])
 const MIME_BY_EXT = {
   '.jpg': 'image/jpeg',
@@ -77,14 +91,18 @@ const MIME_BY_EXT = {
 // ---------- CLI ----------
 function usage(exitCode = 0) {
   const out = exitCode ? console.error : console.log
-  out(`Usage: node ingest.js --gallery <${GALLERIES.join('|')}> <source-folder> [--limit N]
+  out(`Usage: node ingest.js --gallery <${GALLERIES.join('|')}> <source-folder> [--limit N] [--regenerate]
 
-  --gallery   Which gallery the photos belong to (photos.gallery)
-  --limit N   Stop after N files that need work. Already-ingested files
-              are skipped without counting toward the limit, so
-              re-running with --limit 5 does the next five. --limit 0
-              ingests nothing and only checks/repairs existing rows.
-  --help      Show this message
+  --gallery      Which gallery the photos belong to (photos.gallery)
+  --limit N      Stop after N files that need work. Already-ingested
+                 files are skipped without counting toward the limit,
+                 so re-running with --limit 5 does the next five.
+                 --limit 0 ingests nothing and only repairs existing rows.
+  --regenerate   Re-process files that are already ingested: rebuild and
+                 re-upload every derivative and the original, then
+                 update the row's width/height. Use after changing the
+                 pipeline (crop, sizes, quality). Counts toward --limit.
+  --help         Show this message
 `)
   process.exit(exitCode)
 }
@@ -96,6 +114,7 @@ try {
     options: {
       gallery: { type: 'string' },
       limit: { type: 'string' },
+      regenerate: { type: 'boolean' },
       help: { type: 'boolean', short: 'h' },
     },
   })
@@ -109,6 +128,7 @@ if (args.values.help) usage(0)
 const gallery = args.values.gallery
 const sourceDir = args.positionals[0]
 const limit = args.values.limit === undefined ? Infinity : Number(args.values.limit)
+const regenerate = Boolean(args.values.regenerate)
 
 if (!gallery || !GALLERIES.includes(gallery)) {
   console.error(`--gallery must be one of: ${GALLERIES.join(', ')}`)
@@ -266,6 +286,22 @@ async function orientedDimensions(buf) {
   return swap ? { width: m.height, height: m.width } : { width: m.width, height: m.height }
 }
 
+// Apply the gallery's crop (if any) to the GPS-stripped buffer. Returns
+// a re-encoded JPEG at high quality with the (GPS-free) metadata kept.
+// Refuses files whose stored dimensions don't match the expected sheet,
+// so an odd file never gets silently mangled.
+async function applyCrop(buf, crop) {
+  const m = await sharp(buf).metadata()
+  if (m.width !== crop.expect.width || m.height !== crop.expect.height) {
+    throw new Error(`expected a ${crop.expect.width}×${crop.expect.height} sheet to crop, got ${m.width}×${m.height}`)
+  }
+  return sharp(buf)
+    .extract({ left: crop.left, top: crop.top, width: crop.width, height: crop.height })
+    .withMetadata()
+    .jpeg({ quality: 95, chromaSubsampling: '4:4:4', mozjpeg: true })
+    .toBuffer()
+}
+
 async function makeDerivative(buf, edge, quality) {
   // .rotate() with no args bakes EXIF orientation into the pixels.
   // sharp drops all metadata by default (no withMetadata), so the
@@ -299,6 +335,11 @@ async function main() {
   console.log(`source  : ${src}`)
   console.log(`bucket  : ${GALLERY_BUCKET} @ ${SUPABASE_URL}`)
   if (limit !== Infinity) console.log(`limit   : ${limit}`)
+  if (CROP[gallery]) {
+    const c = CROP[gallery]
+    console.log(`crop    : ${c.width}×${c.height} at (${c.left},${c.top}) from ${c.expect.width}×${c.expect.height} sheets`)
+  }
+  if (regenerate) console.log('mode    : REGENERATE — existing photos are rebuilt and re-uploaded')
   console.log()
 
   const { files, skippedTypes } = await listSourceFiles(src)
@@ -327,7 +368,7 @@ async function main() {
   console.log()
 
   const workDir = await mkdtemp(join(tmpdir(), 'grad-ingest-'))
-  const summary = { processed: 0, skipped: 0, skippedDone: 0, skippedLimit: 0, failed: 0, mtimeFallback: 0, datesFixed: 0, pathsFixed: 0 }
+  const summary = { processed: 0, regenerated: 0, skipped: 0, skippedDone: 0, skippedLimit: 0, failed: 0, mtimeFallback: 0, datesFixed: 0, pathsFixed: 0 }
   const failures = []
   let attempted = 0
   let datesChanged = false
@@ -344,7 +385,9 @@ async function main() {
       const fullPath = `${gallery}/full/${id}.webp`
       const originalPath = `${gallery}/original/${id}${ext}`
 
-      if (rows.has(id)) {
+      const existing = rows.has(id)
+
+      if (existing && !regenerate) {
         // Already ingested. Cheap self-heal so re-runs converge:
         //  - taken_at: recompute and update if an earlier run stored a
         //    worse value, so sort_order comes right.
@@ -398,19 +441,26 @@ async function main() {
         await stripGps(work)
 
         // Single read of the stripped file; everything below uses it.
-        const stripped = await readFile(work)
-
-        // 3. dimensions + capture time
-        const { width, height } = await orientedDimensions(stripped)
-        const { takenAt, source } = await readCaptureTime(stripped, file)
+        // Capture time comes from the untouched-but-stripped file, since
+        // a crop re-encode is not where dates live.
+        const strippedRaw = await readFile(work)
+        const { takenAt, source } = await readCaptureTime(strippedRaw, file)
         if (source === 'mtime') summary.mtimeFallback++
 
-        // 4–5. derivatives and uploads, skipping objects already there
+        // 2b. gallery crop, if configured — original and derivatives
+        //     both come from the cropped image.
+        const stripped = CROP[gallery] ? await applyCrop(strippedRaw, CROP[gallery]) : strippedRaw
+
+        // 3. dimensions (post-crop, post-orientation)
+        const { width, height } = await orientedDimensions(stripped)
+
+        // 4–5. derivatives and uploads. Normally objects already present
+        //     are skipped; --regenerate rebuilds and overwrites all of them.
         const uploaded = []
         const plan = [
-          { object: thumbPath, present: thumbs.has(`${id}.webp`), spec: DERIVATIVES[0] },
-          { object: thumb2xPath, present: thumbs.has(`${id}@2x.webp`), spec: DERIVATIVES[1] },
-          { object: fullPath, present: fulls.has(`${id}.webp`), spec: DERIVATIVES[2] },
+          { object: thumbPath, present: !regenerate && thumbs.has(`${id}.webp`), spec: DERIVATIVES[0] },
+          { object: thumb2xPath, present: !regenerate && thumbs.has(`${id}@2x.webp`), spec: DERIVATIVES[1] },
+          { object: fullPath, present: !regenerate && fulls.has(`${id}.webp`), spec: DERIVATIVES[2] },
         ]
         for (const p of plan) {
           if (p.present) continue
@@ -418,14 +468,13 @@ async function main() {
           await upload(p.object, buf, 'image/webp')
           uploaded.push(`${p.spec.key} ${(buf.length / 1024).toFixed(0)}K`)
         }
-        if (!originals.has(`${id}${ext}`)) {
+        if (regenerate || !originals.has(`${id}${ext}`)) {
           await upload(originalPath, stripped, MIME_BY_EXT[ext] || 'application/octet-stream')
           uploaded.push(`original ${(stripped.length / 1024 / 1024).toFixed(1)}M`)
         }
 
         // 6. row — sort_order is fixed up for the whole gallery below
-        const { error } = await supabase.from('photos').insert({
-          id,
+        const rowData = {
           gallery,
           thumb_path: thumbPath,
           full_path: fullPath,
@@ -433,14 +482,20 @@ async function main() {
           width,
           height,
           taken_at: takenAt.toISOString(),
-          sort_order: 0,
-        })
-        if (error) throw new Error(`insert photos row: ${error.message}`)
+        }
+        if (existing) {
+          const { error } = await supabase.from('photos').update(rowData).eq('id', id)
+          if (error) throw new Error(`update photos row: ${error.message}`)
+          summary.regenerated++
+        } else {
+          const { error } = await supabase.from('photos').insert({ id, ...rowData, sort_order: 0 })
+          if (error) throw new Error(`insert photos row: ${error.message}`)
+          summary.processed++
+        }
 
-        summary.processed++
         const detail = uploaded.length ? uploaded.join(', ') : 'objects already present, row added'
         const when = source === 'exif' ? '' : ` [no EXIF date, used ${source}]`
-        console.log(`${tag}  ok  ${width}×${height}  ${detail}${when}`)
+        console.log(`${tag}  ${existing ? 'regenerated' : 'ok'}  ${width}×${height}  ${detail}${when}`)
       } catch (err) {
         summary.failed++
         failures.push({ name, reason: err.message })
@@ -451,7 +506,7 @@ async function main() {
     }
 
     // Recompute sort_order across the whole gallery by capture time.
-    if (summary.processed > 0 || datesChanged) {
+    if (summary.processed > 0 || summary.regenerated > 0 || datesChanged) {
       process.stdout.write('\nrecomputing sort_order… ')
       const changed = await resortGallery()
       console.log(`${changed} row(s) updated`)
@@ -463,6 +518,7 @@ async function main() {
   console.log()
   console.log('Summary')
   console.log(`  processed : ${summary.processed}`)
+  if (regenerate) console.log(`  regenerated : ${summary.regenerated}`)
   console.log(`  skipped   : ${summary.skipped}  (already ingested ${summary.skippedDone}, past --limit ${summary.skippedLimit})`)
   console.log(`  failed    : ${summary.failed}`)
   if (summary.mtimeFallback) {
