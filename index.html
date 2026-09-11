@@ -89,7 +89,7 @@
   // Gallery cards: cover photo + live count per gallery, straight from
   // the photos table. Cover = a chosen sort_order per gallery.
   import { SUPABASE_URL, SUPABASE_KEY, GALLERY_BUCKET } from '/assets/supabase-config.js'
-  const COVER = { photographer: 4, photobooth: 0 }
+  const COVER = { photographer: 4, photobooth: 2 }
   const headers = { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}` }
   const publicUrl = (p) => `${SUPABASE_URL}/storage/v1/object/public/${GALLERY_BUCKET}/${p}`
 
