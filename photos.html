@@ -55,7 +55,20 @@
       </div>
     </div>
 
-    <div class="grid justified" id="grid" aria-label="Photographer gallery"></div>
+    <!-- Chapters, in order. Each starts at or after its `from` (UTC, to the
+         second) and runs to the next one's. Counts come from the data. -->
+    <script type="application/json" id="chapters">
+    [
+      { "title": "Before Everyone Arrived" },
+      { "title": "First Hellos",                  "from": "2026-09-05T23:13:42Z" },
+      { "title": "The Party Gets Going",          "from": "2026-09-05T23:36:13Z" },
+      { "title": "Party and Portraits",           "from": "2026-09-06T00:38:39Z" },
+      { "title": "Dinner Is Served",              "from": "2026-09-06T00:58:32Z" },
+      { "title": "Toasts, Gifts & After Dark",    "from": "2026-09-06T01:19:34Z" },
+      { "title": "The Speech and Mac and Cheese", "from": "2026-09-06T02:44:06Z" }
+    ]
+    </script>
+    <div class="chapters justified" id="gallery" aria-label="Photographer gallery"></div>
     <div class="sentinel" id="sentinel" aria-hidden="true"></div>
     <p class="gstatus" id="gstatus" role="status" aria-live="polite">Loading…</p>
   </section>

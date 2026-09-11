@@ -14,7 +14,7 @@ they captured.
 | Layer | Choice | Why |
 |---|---|---|
 | Site shell | GitHub Pages (existing repo pattern) | Custom domain already works there |
-| All media | Supabase Storage (Pro) | 370 photos + guest video, CDN-backed, no repo bloat |
+| All media | Supabase Storage (Pro) | 364 photos + guest video, CDN-backed, no repo bloat |
 | Metadata | Supabase Postgres | Gallery manifests + upload records |
 
 **No new Supabase project needed.** Add these tables and buckets to an
@@ -60,13 +60,16 @@ Copy these tokens **verbatim** from the RSVP site's `index.html`:
 
 **What deliberately diverges:**
 
-- **Galleries break the 440px column.** They scale up to 1600px in a
-  multi-column grid. Prose sections above and below them stay at 440px,
-  so the page reads as the same site with one wide element — not a
-  different design.
+- **Galleries break the 440px column.** They scale up to 1600px wide.
+  Prose sections above and below them stay at 440px, so the page reads
+  as the same site with one wide element — not a different design.
 - **Lighter frames in-grid.** At 300-thumbnail density a full white mat
-  on every tile is visual noise and wastes space. In the grid: 1px
+  on every tile is visual noise and wastes space. In the gallery: 1px
   `--line` border only. The full mat returns in the lightbox.
+- **Two gallery layouts, one module.** The booth strips are all
+  600×1800, so a uniform grid fits. The photographer set has 18 distinct
+  sizes with portraits mixed among landscapes; a grid would crop people
+  out of frame, so it uses justified rows. Both are `assets/gallery.js`.
 
 ---
 
@@ -74,7 +77,7 @@ Copy these tokens **verbatim** from the RSVP site's `index.html`:
 
 Mobile-first. Assume most traffic is a phone.
 
-### Grid columns
+### Booth: uniform grid
 
 | Width | Context | Columns | Gutter |
 |---|---|---|---|
@@ -84,7 +87,16 @@ Mobile-first. Assume most traffic is a phone.
 | 1024–1439px | tablet landscape / laptop | 4 | 14px |
 | ≥ 1440px | desktop | 5 | 16px |
 
-Wrap the grid in `max-width:1600px; margin:0 auto;`.
+### Photos: justified rows
+
+Pack photos into rows targeting a height — **180px below 768px, 260px
+above** — then scale each row so its tiles fill the width exactly.
+Aspect ratios are preserved; rows containing portraits come out taller.
+A short final row keeps the target height rather than stretching. Same
+gutters as the grid table. Tiles are absolutely positioned from the
+computed geometry and re-laid out on resize.
+
+Both galleries sit in `max-width:1600px; margin:0 auto;`.
 
 ### Prose and forms at every width
 
@@ -153,8 +165,14 @@ useless to a guest.
 
 ### Tier 1 — single photo
 
-Download button in the lightbox. Uses `?download=` with a readable
-name. This is the common case on a phone.
+**One Download button in the lightbox, and it serves the original
+JPG** from `original_path`, via `?download=` with a readable name
+(`francis-grad-party-booth-001.jpg`, `francis-grad-party-photos-001.jpg`;
+the gallery slug keeps the two sets from colliding). The `full` WebP is
+only what the lightbox displays: WebP is a delivery format, and guests
+saving a photo want a file that opens anywhere. Two buttons with an
+unclear difference is worse than one obvious one. This is the common
+case on a phone.
 
 ### Tier 2 — select multiple
 
@@ -180,20 +198,21 @@ broken.
 store them as plain files. Two tiers, because originals are heavy:
 
 ```
-gallery/archives/photobooth-web.zip             (~55 MB)
-gallery/archives/photobooth-originals.zip       (~55 MB)
-gallery/archives/photographer-web.zip      (~90 MB)
-gallery/archives/photographer-originals.zip (~1.1 GB)
+gallery/archives/photobooth-web.zip         (~20 MB)
+gallery/archives/photobooth-originals.zip   (~35 MB)
+gallery/archives/photographer-web.zip       (~90 MB)
+gallery/archives/photographer-originals.zip (~1.0 GB)
 ```
 
-**Default button = web-sized.** Label it plainly:
+**Default button = web-sized.** Label it plainly, with sizes measured
+from the real archives, not these estimates:
 
 ```
 Download all · 90 MB
-Download originals · 1.1 GB          (secondary, smaller, below)
+Download originals · 1.0 GB          (secondary, smaller, below)
 ```
 
-The default must not be the 1.1 GB file. Most guests want photos for
+The default must not be the 1.0 GB file. Most guests want photos for
 their phone and Instagram; a handful want print quality. Make the
 common case one tap and the heavy case deliberate.
 
@@ -205,15 +224,14 @@ Archives regenerate whenever photos are added.
 
 ### Originals
 
-Store the untouched files alongside the derivatives:
+Store the originals alongside the derivatives:
 
 ```
-photobooth/original/<id>.jpg
-photographer/original/<id>.jpg
+photobooth/original/<id>.jpg      the cropped single strip (see pipeline)
+photographer/original/<id>.jpg    untouched apart from GPS
 ```
 
-- Lightbox gets a second download option: **Original** alongside the
-  web-size download
+- The lightbox's single Download button serves these (Tier 1)
 - Serve with `?download=` and a friendly filename, same as everything else
 - **Strip GPS only** — not all EXIF. Location data points at the house;
   camera, lens, and exposure data is harmless and worth keeping on a
@@ -221,8 +239,8 @@ photographer/original/<id>.jpg
 
 ### Bandwidth note
 
-Pro includes 250 GB egress per month. The 1.1 GB originals archive is
-the only thing here big enough to matter — roughly 220 downloads would
+Pro includes 250 GB egress per month. The 1.0 GB originals archive is
+the only thing here big enough to matter — roughly 250 downloads would
 reach the cap. Unlikely, but it's the reason the default button is the
 90 MB version. Watch the usage page the first week.
 
@@ -248,14 +266,36 @@ That single line prevents most of the confusion.
 
 ```
 /              index.html      Thank-you note + two gallery entries + upload CTA
-/booth         booth.html      Photo booth gallery (~70)
-/photos        photos.html     Photographer gallery (~300)
+/booth         booth.html      Photo booth gallery (70), uniform grid
+/photos        photos.html     Photographer gallery (294), justified rows in chapters
 /upload        upload.html     Guest upload form
 ```
 
 Two **separate** galleries, not tabs. Landing page: short thank-you
 note in the RSVP site's voice, then two gallery cards (cover photo +
 name + count) in the double-rule frame, then the upload CTA.
+
+### Chapters (photos only)
+
+294 photos in one scroll is a wall with no sense of progress and no way
+to find a moment. `photos.html` groups them into seven sections by
+`taken_at`, each with a heading and a count, justified rows running
+inside each section. Boundaries are UTC to the second (one is 2 s after
+the previous photo). Chapters are a JSON block in the page; counts are
+derived from the data, never hardcoded.
+
+| Chapter | Starts at (UTC) |
+|---|---|
+| Before Everyone Arrived | first photo |
+| First Hellos | 2026-09-05 23:13:42 |
+| The Party Gets Going | 2026-09-05 23:36:13 |
+| Party and Portraits | 2026-09-06 00:38:39 |
+| Dinner Is Served | 2026-09-06 00:58:32 |
+| Toasts, Gifts & After Dark | 2026-09-06 01:19:34 |
+| The Speech and Mac and Cheese | 2026-09-06 02:44:06 |
+
+Heading: tracked uppercase label for the name, italic serif for the
+count, hairline rule beneath. Booth has no chapters.
 
 ---
 
@@ -267,6 +307,7 @@ create table photos (
   gallery     text not null check (gallery in ('photobooth','photographer')),
   thumb_path  text not null,
   full_path   text not null,
+  original_path text,
   width       int  not null,
   height      int  not null,
   taken_at    timestamptz,
@@ -293,10 +334,12 @@ create table uploads (
 
 **`gallery`** — public read
 ```
-photobooth/thumb/<id>.webp
-photobooth/full/<id>.webp
+photobooth/thumb/<id>.webp          500px longest edge
+photobooth/thumb/<id>@2x.webp      1000px, srcset 2x (derived from thumb_path)
+photobooth/full/<id>.webp          2000px
 photobooth/original/<id>.jpg
 photographer/thumb/<id>.webp
+photographer/thumb/<id>@2x.webp
 photographer/full/<id>.webp
 photographer/original/<id>.jpg
 archives/photobooth-web.zip
@@ -341,9 +384,17 @@ and safe *only* because RLS is doing the work. Do not skip the policies.
 **Source photos live at:**
 
 ```
-/Users/francis/Documents/Graduation/photobooth/      (~70 files,  55 MB)
-/Users/francis/Documents/Graduation/photographer/    (~300 files, 1.1 GB)
+/Users/francis/Documents/Graduation/photobooth/      (70 files,  55 MB)
+/Users/francis/Documents/Graduation/photographer/    (294 files, 1.0 GB)
 ```
+
+**The photobooth files are 1200×1800 print sheets**, not photos: the
+same 2×6 strip twice, side by side, on kraft paper. The pipeline crops
+each to the exact left half (600×1800) before doing anything else, so
+the original in storage, the derivatives and the stored dimensions all
+describe one strip. The kraft frame is part of the strip's design and
+stays; the source sheets on disk are untouched. The crop refuses any
+file that is not 1200×1800.
 
 **Before running:** confirm these are real local files, not iCloud
 placeholders. If Desktop & Documents syncing is on, macOS may have
@@ -355,7 +406,7 @@ find /Users/francis/Documents/Graduation -name "*.icloud" | head
 du -sh /Users/francis/Documents/Graduation/*
 ```
 
-If `.icloud` files show up, or the sizes are far below 55 MB / 1.1 GB,
+If `.icloud` files show up, or the sizes are far below 55 MB / 1.0 GB,
 select all in Finder → right-click → **Download Now** first.
 
 `scripts/ingest.js`:
@@ -364,7 +415,8 @@ select all in Finder → right-click → **Download Now** first.
 2. For each image:
    - **Strip GPS** (photographer files may carry coordinates of the house).
      Keep camera/exposure EXIF — it's harmless and useful on originals.
-   - Read original dimensions
+   - Apply the gallery's crop, if any (photobooth: left half)
+   - Read dimensions after crop and EXIF orientation
    - `thumb`: longest edge 500px, WebP q78
    - `thumb@2x`: longest edge 1000px, WebP q72
    - `full`: longest edge 2000px, WebP q82
@@ -377,18 +429,25 @@ select all in Finder → right-click → **Download Now** first.
    `archives/<gallery>-web.zip` and `archives/<gallery>-originals.zip`,
    using friendly sequential filenames inside
    (`francis-grad-party-001.jpg` …)
-6. Idempotent — re-running skips files already present
+6. Idempotent — re-running skips files already present. The photo id is
+   a UUID derived from the source file's hash, so ids and paths are
+   stable across runs. `--regenerate` rebuilds everything for files
+   already ingested (after a pipeline change); `--limit N` for tests.
 
 Expect ~30–60 KB per thumbnail, ~200–350 KB per full image. Totals:
-derivatives ~150 MB, originals ~1.16 GB, archives ~1.3 GB —
-about **2.6 GB**, trivial against a 100 GB quota.
+derivatives ~150 MB, originals ~1.05 GB, archives ~1.2 GB —
+about **2.4 GB**, trivial against a 100 GB quota.
 
 ---
 
 ## Gallery behavior
 
 - Load **40 at a time**, fetch more on scroll. Never render 300 at once.
-- Tap opens a lightbox with the `full` image, nav, and download button
+  In chaptered galleries, headings and counts render first from one
+  small fetch of capture times; tiles land in their section as pages
+  arrive.
+- Tap opens a lightbox with the `full` image, nav, and one Download
+  button (original JPG)
 - Lightbox image capped at `90vw` / `85vh`
 - Gallery header: photo count, **Select** toggle, **Download all · N MB**,
   and a smaller **Download originals · N GB** beneath it
@@ -445,7 +504,7 @@ Lead with the specific ask:
 
 ## Privacy
 
-370 photos of identifiable guests, no passcode.
+364 photos of identifiable guests, no passcode.
 
 - `noindex` keeps it out of search results
 - URL shared directly with attendees only
@@ -456,9 +515,9 @@ Lead with the specific ask:
 ## Build order
 
 1. Supabase: tables, buckets, RLS policies
-2. `scripts/ingest.js`, tested on 5 photos before the full 370
+2. `scripts/ingest.js`, tested on 5 photos before the full 364
 3. Booth gallery + single-photo download (smaller set — prove the pattern)
-4. Photographer gallery (adds pagination pressure)
+4. Photographer gallery: justified rows, chapters (adds pagination pressure)
 5. Selection mode + client-side zip
 6. Archive generation in the pipeline + "Download all"
 7. Upload page

@@ -4,9 +4,17 @@
 // Reads `photos` rows for the gallery named in <body data-gallery>,
 // renders tiles 40 at a time as the user scrolls, and drives the
 // lightbox. The lightbox shows the `full` WebP and its single Download
-// button serves the original JPG with a friendly filename. Talks to PostgREST with plain fetch: this page only reads
-// one table and builds URLs, so the supabase-js bundle isn't worth
-// its weight here.
+// button serves the original JPG with a friendly filename. Talks to
+// PostgREST with plain fetch: this page only reads one table and builds
+// URLs, so the supabase-js bundle isn't worth its weight here.
+//
+// Two page shapes:
+//   <div id="grid" class="grid [justified]">          one run of tiles
+//   <div id="gallery" class="chapters [justified]">   sections, one per
+//       chapter, driven by <script type="application/json" id="chapters">
+//       [{ title }, { title, from: ISO }, …]. Each chapter starts at or
+//       after its `from` (compared at millisecond precision) and runs to
+//       the next chapter's `from`. Counts are derived from the data.
 //
 // Row shape (see docs/thank-you-site-spec.md + docs/STATUS.md):
 //   id, thumb_path, full_path, original_path, width, height, sort_order
@@ -29,8 +37,18 @@ const gallery = body.dataset.gallery
 const slug = SLUG[gallery] || gallery
 const publicBase = `${SUPABASE_URL}/storage/v1/object/public/${GALLERY_BUCKET}/`
 
-const grid = document.getElementById('grid')
-const justified = grid.classList.contains('justified')
+// host: the element tiles live under. Either a single #grid, or a
+// #gallery container that gets one <section class="chapter"> per chapter.
+const singleGrid = document.getElementById('grid')
+const chapterRoot = document.getElementById('gallery')
+const host = chapterRoot || singleGrid
+const justified = host.classList.contains('justified')
+const chaptersJson = document.getElementById('chapters')
+const chapters = chapterRoot && chaptersJson ? JSON.parse(chaptersJson.textContent) : null
+
+const grids = []            // grid elements in page order (one per chapter, or just #grid)
+let chapterByIndex = []     // photo index → chapter number; empty when no chapters
+
 const status = document.getElementById('gstatus')
 const sentinel = document.getElementById('sentinel')
 const countEl = document.getElementById('count')
@@ -98,8 +116,8 @@ async function fetchPage() {
 
     const startIndex = photos.length
     photos.push(...rows)
-    renderTiles(rows, startIndex)
-    if (justified) layoutJustified()
+    const touched = renderTiles(rows, startIndex)
+    if (justified) touched.forEach(layoutJustified)
 
     if (total !== null && countEl) {
       countEl.textContent = `${total} photo${total === 1 ? '' : 's'}`
@@ -120,9 +138,75 @@ async function fetchPage() {
   }
 }
 
-// ---------- tiles ----------
-function renderTiles(rows, startIndex) {
+// ---------- chapters ----------
+// One small fetch of every capture time in the gallery (a few KB) so
+// all section headings and counts can render before any photo loads,
+// and so each arriving tile knows which section it belongs to.
+async function loadChapters() {
+  if (!chapters) {
+    grids.push(singleGrid)
+    return
+  }
+  const q = new URLSearchParams({
+    select: 'taken_at',
+    gallery: `eq.${gallery}`,
+    order: 'sort_order.asc',
+  })
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/photos?${q}`, {
+    headers: { apikey: SUPABASE_KEY, Authorization: `Bearer ${SUPABASE_KEY}`, Range: '0-9999' },
+  })
+  if (!res.ok && res.status !== 206) throw new Error(`HTTP ${res.status}`)
+  const times = (await res.json()).map((r) => Date.parse(r.taken_at))
+
+  // boundary k = start of chapter k (chapter 0 has none). A photo is in
+  // the last chapter whose start is <= its taken_at.
+  const starts = chapters.map((c) => (c.from ? Date.parse(c.from) : -Infinity))
+  const counts = chapters.map(() => 0)
+  chapterByIndex = times.map((t) => {
+    let k = 0
+    for (let j = 1; j < starts.length; j++) if (t >= starts[j]) k = j
+    counts[k]++
+    return k
+  })
+
   const frag = document.createDocumentFragment()
+  chapters.forEach((c, k) => {
+    const sec = document.createElement('section')
+    sec.className = 'chapter'
+    sec.dataset.chapter = k + 1
+
+    const head = document.createElement('header')
+    head.className = 'chead'
+    const title = document.createElement('h2')
+    title.className = 'ctitle'
+    title.textContent = c.title
+    const count = document.createElement('p')
+    count.className = 'ccount'
+    count.textContent = `${counts[k]} photo${counts[k] === 1 ? '' : 's'}`
+    head.append(title, count)
+
+    const g = document.createElement('div')
+    g.className = justified ? 'grid justified' : 'grid'
+    g.setAttribute('aria-label', c.title)
+    g.dataset.count = counts[k]
+
+    sec.append(head, g)
+    frag.appendChild(sec)
+    grids.push(g)
+  })
+  chapterRoot.appendChild(frag)
+}
+
+function gridFor(index) {
+  if (!chapters || !chapterByIndex.length) return grids[0]
+  const k = chapterByIndex[index] ?? chapters.length - 1
+  return grids[k]
+}
+
+// ---------- tiles ----------
+// Returns the set of grids that received tiles.
+function renderTiles(rows, startIndex) {
+  const frags = new Map() // grid → fragment
   rows.forEach((p, i) => {
     const index = startIndex + i
     const b = document.createElement('button')
@@ -140,9 +224,13 @@ function renderTiles(rows, startIndex) {
     img.decoding = 'async'
     img.alt = ''
     b.appendChild(img)
-    frag.appendChild(b)
+
+    const g = gridFor(index)
+    if (!frags.has(g)) frags.set(g, document.createDocumentFragment())
+    frags.get(g).appendChild(b)
   })
-  grid.appendChild(frag)
+  for (const [g, frag] of frags) g.appendChild(frag)
+  return [...frags.keys()]
 }
 
 // ---------- justified rows ----------
@@ -151,13 +239,17 @@ function gutter(vw) {
   return vw < 480 ? 8 : vw < 768 ? 10 : vw < 1024 ? 12 : vw < 1440 ? 14 : 16
 }
 
-function layoutJustified() {
+function layoutJustified(grid) {
   const W = grid.clientWidth
-  if (!W || !photos.length) return
+  const tiles = grid.children
+  if (!W) return
+  if (!tiles.length) {
+    grid.style.height = '0px'
+    return
+  }
   const vw = window.innerWidth
   const target = vw < 768 ? ROW_TARGET.mobile : ROW_TARGET.desktop
   const gap = gutter(vw)
-  const tiles = grid.children
 
   let y = 0
   let row = []       // [{ el, ar }]
@@ -184,8 +276,9 @@ function layoutJustified() {
     rowAr = 0
   }
 
-  for (let i = 0; i < photos.length; i++) {
-    const ar = photos[i].width / photos[i].height
+  for (let i = 0; i < tiles.length; i++) {
+    const p = photos[Number(tiles[i].dataset.index)]
+    const ar = p.width / p.height
     const withoutW = widthAt(target, row.length, rowAr)
     const withW = widthAt(target, row.length + 1, rowAr + ar)
     // If adding this photo overshoots the width, decide which is closer
@@ -206,11 +299,11 @@ if (justified) {
   let raf = 0
   window.addEventListener('resize', () => {
     cancelAnimationFrame(raf)
-    raf = requestAnimationFrame(layoutJustified)
+    raf = requestAnimationFrame(() => grids.forEach(layoutJustified))
   })
 }
 
-grid.addEventListener('click', (e) => {
+host.addEventListener('click', (e) => {
   const tile = e.target.closest('.tile')
   if (!tile) return
   openedFrom = tile
@@ -303,5 +396,20 @@ lb.addEventListener('close', () => {
 })
 
 // ---------- go ----------
-observer.observe(sentinel)
-fetchPage()
+loadChapters()
+  .catch((err) => {
+    // Chapter headings are a nicety; the photos must still load. Fall
+    // back to a single unlabelled section.
+    console.error(err)
+    if (chapters && !grids.length) {
+      const g = document.createElement('div')
+      g.className = justified ? 'grid justified' : 'grid'
+      chapterRoot.appendChild(g)
+      grids.push(g)
+      chapterByIndex = []
+    }
+  })
+  .then(() => {
+    observer.observe(sentinel)
+    fetchPage()
+  })
