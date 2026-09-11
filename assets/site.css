@@ -75,13 +75,10 @@ a:hover{text-decoration-color:var(--lavender);}
 .ghead .meta{min-height:44px;display:inline-flex;align-items:center;}
 .ghead .actions{display:flex;align-items:flex-start;gap:4px 14px;margin-left:auto;flex-wrap:wrap;}
 
-/* download all: primary button, originals link smaller beneath, one-line note */
-.dl-all{display:flex;flex-direction:column;align-items:flex-end;gap:2px;}
+/* download all: one primary button (the originals zip) + one-line note */
+.dl-all{display:flex;flex-direction:column;align-items:flex-end;gap:6px;}
 .dl-all[hidden]{display:none;}
 .dl-all .btn{width:auto;padding:13px 18px;min-height:44px;}
-.dl-all .dl-orig{display:inline-flex;align-items:center;gap:.35em;min-height:36px;font-family:var(--sans);font-size:11px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);text-decoration:none;}
-.dl-all .dl-orig:hover{color:var(--lavender);}
-.dl-all .dl-orig:focus-visible{outline:2px solid var(--lavender);outline-offset:2px;}
 .dl-all .dl-note{font-family:var(--serif);font-style:italic;font-size:13px;line-height:1.4;color:var(--ink-soft);margin:0;text-align:right;}
 @media (max-width:767px){
   .ghead{flex-direction:column;align-items:stretch;}

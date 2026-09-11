@@ -154,7 +154,9 @@ cd scripts && node ingest.js --gallery photographer --archives
 
 They are built from storage, streamed via `archiver` to a temp file and
 uploaded as a file-backed Blob, so the 1 GB originals zip never sits in
-memory. The pages read the archive sizes from the objects at load.
+memory. The pages surface only the originals zip as "Download all" and
+read its size from the object at load; the web zip stays in storage
+unsurfaced.
 
 **Photobooth crop.** The booth exports 1200×1800 print sheets with the
 same 2×6 strip twice side by side on kraft paper. The script crops

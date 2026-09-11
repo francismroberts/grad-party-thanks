@@ -218,27 +218,28 @@ gallery/archives/photographer-web.zip       (~90 MB)
 gallery/archives/photographer-originals.zip (~1.0 GB)
 ```
 
-**Default button = web-sized.** Label it plainly. Sizes are read at
-page load from the uploaded archive objects (HEAD → Content-Length),
-never estimated, and the block stays hidden until the web archive
-exists:
+**One button, and it serves the originals zip.** WebP is a delivery
+format; a guest unzipping 294 `.webp` files hits the same problem the
+lightbox download avoids. The web zip stays in storage but isn't
+surfaced. The size is read at page load from the uploaded object
+(HEAD → Content-Length), never estimated, and the block stays hidden
+until the archive exists:
 
 ```
-Download all · 90 MB
-Download originals · 1.0 GB          (secondary, smaller, below)
+Download all · 1.0 GB
+Full resolution, straight from the camera. Best on a computer.
 ```
 
-The default must not be the 1.0 GB file. Archives are built from what
-is in storage (not the source folders) so they match the site byte for
-byte, streamed through `archiver` to a temp file and uploaded as a
-file-backed Blob; `node ingest.js --gallery X --archives` rebuilds them
-on demand, and a full ingest that adds or regenerates photos rebuilds
-them itself. The select-mode over-cap note links to the originals
-archive. Most guests want photos for
+Archives are built from what is in storage (not the source folders) so
+they match the site byte for byte, streamed through `archiver` to a
+temp file and uploaded as a file-backed Blob; `node ingest.js
+--gallery X --archives` rebuilds them on demand, and a full ingest that
+adds or regenerates photos rebuilds them itself. The select-mode
+over-cap note links to the same originals archive. Most guests want photos for
 their phone and Instagram; a handful want print quality. Make the
 common case one tap and the heavy case deliberate.
 
-Add a line under the originals link:
+The line under the button:
 
 > Full resolution, straight from the camera. Best on a computer.
 

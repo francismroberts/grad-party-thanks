@@ -792,37 +792,31 @@ function note(text, kind = null, link = null, after = '') {
   }
 }
 
-// ---------- download all (pre-built archives) ----------
-// Two archives per gallery live in storage: archives/<gallery>-web.zip
-// and archives/<gallery>-originals.zip. Sizes shown are read from the
-// objects themselves (HEAD → Content-Length), never estimated; the block
-// stays hidden until both are known.
-const archives = { web: null, originals: null }
+// ---------- download all (pre-built archive) ----------
+// The button serves archives/<gallery>-originals.zip: original JPGs
+// with friendly names. (A web-size WebP zip also exists in storage but
+// isn't surfaced: a guest unzipping 294 .webp files hits the same
+// problem the lightbox download avoids.) The size shown is read from
+// the object itself (HEAD → Content-Length), never estimated; the block
+// stays hidden until it's known.
+const archives = { originals: null }
 async function loadArchives() {
   const block = document.getElementById('dl-all')
   if (!block) return
-  const specs = {
-    web: { el: document.getElementById('dl-web'), sizeEl: document.getElementById('dl-web-size'), path: `archives/${gallery}-web.zip`, name: `francis-grad-party-${slug}-all.zip` },
-    originals: { el: document.getElementById('dl-orig'), sizeEl: document.getElementById('dl-orig-size'), path: `archives/${gallery}-originals.zip`, name: `francis-grad-party-${slug}-originals.zip` },
-  }
-  await Promise.all(Object.entries(specs).map(async ([kind, s]) => {
-    try {
-      const res = await fetch(url(s.path), { method: 'HEAD' })
-      const size = res.ok ? Number(res.headers.get('content-length')) : 0
-      if (!size) return
-      const href = downloadUrl(s.path, s.name)
-      s.el.href = href
-      s.sizeEl.textContent = fmtBytes(size)
-      archives[kind] = { href, size }
-    } catch (err) {
-      console.warn(`archive ${kind} unavailable`, err)
-    }
-  }))
-  if (archives.web) {
+  const el = document.getElementById('dl-orig')
+  const sizeEl = document.getElementById('dl-orig-size')
+  const path = `archives/${gallery}-originals.zip`
+  try {
+    const res = await fetch(url(path), { method: 'HEAD' })
+    const size = res.ok ? Number(res.headers.get('content-length')) : 0
+    if (!size) return
+    const href = downloadUrl(path, `francis-grad-party-${slug}-all.zip`)
+    el.href = href
+    sizeEl.textContent = fmtBytes(size)
+    archives.originals = { href, size }
     block.hidden = false
-    // originals link only if that archive exists too
-    specs.originals.el.hidden = !archives.originals
-    block.querySelector('.dl-note').hidden = !archives.originals
+  } catch (err) {
+    console.warn('archive unavailable', err)
   }
   updateSelbar()
 }
