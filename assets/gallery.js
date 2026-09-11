@@ -258,10 +258,10 @@ function loadBlock(b) {
   setStatus(photos.length ? 'Loading more…' : 'Loading…')
   p.catch((err) => {
     console.error(err)
-    setStatus('Couldn’t load the photos. Refresh to try again.')
+    setStatus("Couldn't load the photos. Refresh to try again.")
   }).finally(() => {
     inflight.delete(b)
-    if (!inflight.size && !status.textContent.startsWith('Couldn’t')) setStatus(null)
+    if (!inflight.size && !status.textContent.startsWith("Couldn't")) setStatus(null)
     if (total === 0) setStatus('No photos here yet.')
   })
   return p
@@ -274,7 +274,7 @@ function altFor(p, index) {
   const where = chapters
     ? chapters[chapterByIndex[index] ?? chapters.length - 1].title
     : 'photo booth strip'
-  return `Photo ${p.sort_order + 1} of ${total ?? '…'} — ${where}`
+  return `Photo ${p.sort_order + 1} of ${total ?? '…'}, ${where}`
 }
 
 function makeTile(p, index) {
@@ -764,10 +764,10 @@ function updateSelbar() {
     // Point at the originals archive (same content as a selection zip)
     // so this is a way out, not a dead end.
     if (archives.originals) {
-      note(`That's a lot — ${fmtBytes(bytes)}. `, 'cap',
+      note(`That's ${fmtBytes(bytes)}. `, 'cap',
         { text: 'Grab the whole gallery instead', href: archives.originals.href }, ', or pick fewer.')
     } else {
-      note(`That's a lot — ${fmtBytes(bytes)}. Pick fewer photos.`, 'cap')
+      note(`That's ${fmtBytes(bytes)}. Pick fewer photos.`, 'cap')
     }
   } else if (noteKind === 'cap') {
     note(null)
@@ -919,7 +919,7 @@ async function downloadSelected() {
     if (bytes > ZIP_CAP) throw new Error('over the size cap')
     const saver = pickSaver()
     if (saver === 'blob' && bytes > BLOB_CAP) {
-      note(`This browser can't stream a zip that big (${fmtBytes(bytes)}). Pick fewer photos, or use a computer.`)
+      note(`This browser can't handle a zip that big (${fmtBytes(bytes)}). Pick fewer photos, or use a computer.`)
       return
     }
     const zipName = `francis-grad-party-${slug}-${idx.length}-photo${idx.length === 1 ? '' : 's'}.zip`
@@ -946,7 +946,7 @@ async function downloadSelected() {
       } catch (err) {
         console.warn('OPFS unavailable, buffering instead:', err)
         if (bytes > BLOB_CAP) {
-          note(`This browser can't stream a zip that big (${fmtBytes(bytes)}). Pick fewer photos, or use a computer.`)
+          note(`This browser can't handle a zip that big (${fmtBytes(bytes)}). Pick fewer photos, or use a computer.`)
           return
         }
         sink = null
@@ -1002,7 +1002,7 @@ async function downloadSelected() {
       // cancelled: fall through to reset
     } else {
       console.error(err)
-      note(`Couldn't build the zip: ${err.message}. Try again, or grab fewer photos.`, 'error')
+      note(`Couldn't build the zip. ${err.message} Try again, or grab fewer photos.`, 'error')
     }
   } finally {
     // a destination that was opened but never fully piped is abandoned

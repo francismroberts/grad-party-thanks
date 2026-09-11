@@ -60,8 +60,8 @@ function forgetObjectName(file) {
 root.innerHTML = `
 <form class="upl" id="upl" novalidate>
   <p class="label">Uploads</p>
-  <h2 class="upl-h">If you got a good video of the speech, upload it here for me.</h2>
-  <p class="prose">Photos too — anything from the day you'd want me to have. Big files are fine: if your connection drops, it picks up where it left off.</p>
+  <h2 class="upl-h">Got a <em>good</em> video of the speech? Send it over.</h2>
+  <p class="prose">Photos too. Anything from the day you think I'd want. Big files are fine. If your connection drops, it picks right back up where it left off.</p>
 
   <div class="field">
     <label for="upl-name">Your name <span class="opt">optional</span></label>
@@ -75,7 +75,7 @@ root.innerHTML = `
     <span class="flabel" id="upl-files-label">Files</span>
     <label class="picker" for="upl-files"><span class="picker-text" id="upl-picker-text">Choose photos or video</span></label>
     <input id="upl-files" name="files" type="file" accept="image/*,video/*" multiple class="vh" aria-labelledby="upl-files-label">
-    <p class="hint">Images and video, up to 2 GB each.</p>
+    <p class="hint">Images and video. Up to 2 GB each.</p>
   </div>
 
   <ul class="ufiles" id="upl-list" aria-live="polite"></ul>
@@ -179,7 +179,7 @@ function updateItem(item, pct = null) {
       track.setAttribute('aria-valuenow', '100')
       break
     case 'error':
-      status.textContent = `Didn't make it: ${item.reason}`
+      status.textContent = `Didn't make it. ${item.reason}`
       action.textContent = 'Retry'
       action.hidden = false
       break
@@ -233,13 +233,13 @@ filesEl.addEventListener('change', () => {
     const item = { file, status: 'ready', sent: 0 }
     if (!isMedia(file)) {
       item.status = 'invalid'
-      item.reason = 'Not a photo or video — skipped'
+      item.reason = 'Not a photo or video. Skipped.'
     } else if (file.size > MAX_BYTES) {
       item.status = 'invalid'
-      item.reason = `Over 2 GB (${fmtBytes(file.size)}) — skipped`
+      item.reason = `Over 2 GB (${fmtBytes(file.size)}). Skipped.`
     } else if (file.size === 0) {
       item.status = 'invalid'
-      item.reason = 'Empty file — skipped'
+      item.reason = 'Empty file. Skipped.'
     }
     items.push(item)
     listEl.appendChild(renderItem(item))
@@ -368,14 +368,15 @@ function finish() {
   doneEl.hidden = false
   if (failed.length) {
     doneH.textContent = `${done.length} of ${valid.length} made it.`
-    const which = failed.length === 1 ? "one that didn't" : "ones that didn't"
-    doneP.textContent = `Hit Retry on the ${which} whenever you're ready — it starts from where it stopped.`
+    doneP.textContent = failed.length === 1
+      ? "Hit Retry on the one that didn't whenever you're ready. It picks up right where it stopped."
+      : "Hit Retry on the ones that didn't whenever you're ready. They pick up right where they stopped."
   } else {
     const videos = done.filter((i) => i.file.type.startsWith('video/') || VIDEO_EXT.test(i.file.name)).length
-    doneH.textContent = done.length === 1 ? 'Got it. Thank you.' : `Got all ${done.length}. Thank you.`
+    doneH.textContent = done.length === 1 ? 'Got it. Thank you!' : `Got all ${done.length}. Thank you!`
     doneP.textContent = videos
-      ? 'I\'ll watch it tonight. Seriously — thank you.'
-      : 'I\'ll go through everything this week and add the good ones to the galleries.'
+      ? 'I\'m watching this tonight. Thank you, seriously.'
+      : 'I\'ll go through these this week and add the good ones to the galleries.'
   }
   doneEl.scrollIntoView({ block: 'nearest', behavior: 'smooth' })
 }
